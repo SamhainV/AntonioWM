@@ -1,0 +1,376 @@
+#include "wm.h"
+#include "config.h"
+
+#include <X11/cursorfont.h>
+#include <X11/extensions/Xrandr.h>
+
+#include <errno.h>
+#include <locale.h>
+#include <poll.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+WM wm;
+
+static bool another_wm_detected;
+
+static int startup_xerror(Display *display, XErrorEvent *error)
+{
+    (void)display;
+
+    if (error->error_code == BadAccess) {
+        another_wm_detected = true;
+    }
+
+    return 0;
+}
+
+static int runtime_xerror(Display *display, XErrorEvent *error)
+{
+    char message[256];
+
+    /* Windows can disappear between an event and its asynchronous request. */
+    if (error->error_code == BadWindow || error->error_code == BadDrawable ||
+        error->error_code == BadMatch || error->error_code == BadAccess) {
+        return 0;
+    }
+
+    XGetErrorText(display, error->error_code, message, (int)sizeof(message));
+    fprintf(stderr,
+            "%s: error X11: %s (peticion=%u, codigo_menor=%u, recurso=0x%lx)\n",
+            AWM_NAME,
+            message,
+            (unsigned int)error->request_code,
+            (unsigned int)error->minor_code,
+            error->resourceid);
+    return 0;
+}
+
+static unsigned long allocate_color(const char *name, unsigned long fallback)
+{
+    XColor exact;
+    XColor screen;
+    Colormap colormap = DefaultColormap(wm.display, wm.screen);
+
+    if (XAllocNamedColor(wm.display, colormap, name, &screen, &exact) == 0) {
+        fprintf(stderr,
+                "%s: no se pudo reservar el color '%s'; se usara el color de respaldo\n",
+                AWM_NAME,
+                name);
+        return fallback;
+    }
+
+    return screen.pixel;
+}
+
+static void prime_randr_state(void)
+{
+    int event_base;
+    int error_base;
+    int major = 1;
+    int minor = 5;
+    int monitor_count = 0;
+    XRRMonitorInfo *monitors;
+
+    /*
+     * Xephyr can defer creation of its RandR monitor objects until the first
+     * RandR 1.5 monitor query.  If a GTK application is that first client,
+     * the resulting screen/output notifications may invalidate the borrowed
+     * GdkMonitor selected during its startup.  Query once here so clients see
+     * a stable monitor topology from their first connection onward.
+     */
+    if (XRRQueryExtension(wm.display, &event_base, &error_base) == 0 ||
+        XRRQueryVersion(wm.display, &major, &minor) == 0 ||
+        major < 1 || (major == 1 && minor < 5)) {
+        return;
+    }
+
+    monitors = XRRGetMonitors(wm.display, wm.root, True, &monitor_count);
+    if (monitors != NULL) {
+        XRRFreeMonitors(monitors);
+    }
+    XSync(wm.display, False);
+}
+
+static void scan_existing_windows(void)
+{
+    Window root_return;
+    Window parent_return;
+    Window *children = NULL;
+    unsigned int child_count = 0U;
+    unsigned int index;
+
+    XGrabServer(wm.display);
+
+    if (XQueryTree(wm.display,
+                   wm.root,
+                   &root_return,
+                   &parent_return,
+                   &children,
+                   &child_count) != 0) {
+        for (index = 0U; index < child_count; ++index) {
+            XWindowAttributes attributes;
+
+            if (XGetWindowAttributes(wm.display, children[index], &attributes) == 0) {
+                continue;
+            }
+
+            if (!attributes.override_redirect && attributes.class != InputOnly &&
+                attributes.map_state == IsViewable) {
+                client_manage(children[index], false);
+            }
+        }
+    }
+
+    if (children != NULL) {
+        XFree(children);
+    }
+
+    {
+        Client *client;
+
+        /* A transient can precede its parent in the root stacking list after a
+         * hot restart.  Resolve the complete family once every client exists. */
+        for (client = wm.clients; client != NULL; client = client->next) {
+            Client *parent;
+
+            hints_refresh_transient(client);
+            parent = client_find(client->transient_for);
+            if (parent != NULL && !client->sticky &&
+                client->desktop != parent->desktop) {
+                client->desktop = parent->desktop;
+                ewmh_set_client_desktop(client);
+            }
+        }
+        stacking_enforce();
+    }
+
+    XUngrabServer(wm.display);
+}
+
+static bool claim_root_window(void)
+{
+    const long root_events = SubstructureRedirectMask |
+                             SubstructureNotifyMask |
+                             PropertyChangeMask |
+                             StructureNotifyMask;
+
+    another_wm_detected = false;
+    XSetErrorHandler(startup_xerror);
+    XSelectInput(wm.display, wm.root, root_events);
+    XSync(wm.display, False);
+    XSetErrorHandler(runtime_xerror);
+
+    if (another_wm_detected) {
+        fprintf(stderr,
+                "%s: ya existe otro gestor de ventanas controlando la pantalla '%s'.\n",
+                AWM_NAME,
+                DisplayString(wm.display));
+        return false;
+    }
+
+    return true;
+}
+
+bool wm_initialize(int argc, char **argv)
+{
+    struct sigaction child_action;
+
+    memset(&wm, 0, sizeof(wm));
+    wm.argc = argc;
+    wm.argv = argv;
+    wm.last_event_time = CurrentTime;
+
+    (void)setlocale(LC_CTYPE, "");
+
+    wm.display = XOpenDisplay(NULL);
+    if (wm.display == NULL) {
+        fprintf(stderr,
+                "%s: no se pudo abrir la pantalla X '%s'. Comprueba la variable DISPLAY.\n",
+                AWM_NAME,
+                XDisplayName(NULL));
+        return false;
+    }
+
+    wm.screen = DefaultScreen(wm.display);
+    wm.root = RootWindow(wm.display, wm.screen);
+    wm.screen_width = DisplayWidth(wm.display, wm.screen);
+    wm.screen_height = DisplayHeight(wm.display, wm.screen);
+
+    if (!claim_root_window()) {
+        XCloseDisplay(wm.display);
+        wm.display = NULL;
+        return false;
+    }
+
+    prime_randr_state();
+
+    if (!desktop_initialize()) {
+        XCloseDisplay(wm.display);
+        wm.display = NULL;
+        return false;
+    }
+    ewmh_initialize();
+
+    wm.focused_border = allocate_color(AWM_COLOR_FOCUSED,
+                                       WhitePixel(wm.display, wm.screen));
+    wm.unfocused_border = allocate_color(AWM_COLOR_UNFOCUSED,
+                                         BlackPixel(wm.display, wm.screen));
+    wm.title_active = allocate_color(AWM_COLOR_TITLE_ACTIVE,
+                                     wm.focused_border);
+    wm.title_inactive = allocate_color(AWM_COLOR_TITLE_INACTIVE,
+                                       wm.unfocused_border);
+    wm.title_text_active = allocate_color(AWM_COLOR_TITLE_TEXT_ACTIVE,
+                                          WhitePixel(wm.display, wm.screen));
+    wm.title_text_inactive = allocate_color(AWM_COLOR_TITLE_TEXT_INACTIVE,
+                                            WhitePixel(wm.display, wm.screen));
+    wm.button_background = allocate_color(AWM_COLOR_BUTTON,
+                                          wm.title_inactive);
+    wm.button_symbol = allocate_color(AWM_COLOR_BUTTON_SYMBOL,
+                                      WhitePixel(wm.display, wm.screen));
+    wm.bar_background = allocate_color(AWM_COLOR_BAR_BACKGROUND,
+                                       BlackPixel(wm.display, wm.screen));
+    wm.bar_foreground = allocate_color(AWM_COLOR_BAR_FOREGROUND,
+                                       WhitePixel(wm.display, wm.screen));
+    wm.bar_selected = allocate_color(AWM_COLOR_BAR_SELECTED,
+                                     wm.title_active);
+    wm.bar_active_window = allocate_color(AWM_COLOR_BAR_ACTIVE_WINDOW,
+                                          wm.title_active);
+    wm.bar_minimized = allocate_color(AWM_COLOR_BAR_MINIMIZED,
+                                      wm.title_inactive);
+    wm.bar_urgent = allocate_color(AWM_COLOR_BAR_URGENT,
+                                   wm.title_active);
+    wm.move_cursor = XCreateFontCursor(wm.display, XC_fleur);
+    wm.resize_cursor = XCreateFontCursor(wm.display, XC_bottom_right_corner);
+
+    if (!draw_initialize()) {
+        ewmh_cleanup();
+        desktop_cleanup();
+        XCloseDisplay(wm.display);
+        wm.display = NULL;
+        return false;
+    }
+    if (!bar_initialize()) {
+        draw_cleanup();
+        ewmh_cleanup();
+        desktop_cleanup();
+        XCloseDisplay(wm.display);
+        wm.display = NULL;
+        return false;
+    }
+
+    memset(&child_action, 0, sizeof(child_action));
+    child_action.sa_handler = SIG_IGN;
+    child_action.sa_flags = SA_NOCLDWAIT;
+    sigemptyset(&child_action.sa_mask);
+    (void)sigaction(SIGCHLD, &child_action, NULL);
+
+    keyboard_grab_keys();
+    scan_existing_windows();
+    ewmh_update_client_list();
+    bar_update();
+    bar_raise();
+
+    wm.running = true;
+    XSync(wm.display, False);
+
+    fprintf(stdout,
+            "%s %s iniciado en %s (%dx%d)\n",
+            AWM_NAME,
+            AWM_VERSION,
+            DisplayString(wm.display),
+            wm.screen_width,
+            wm.screen_height);
+    fflush(stdout);
+    return true;
+}
+
+void wm_run(void)
+{
+    while (wm.running) {
+        struct pollfd descriptor;
+        int result;
+
+        while (wm.running && XPending(wm.display) > 0) {
+            XEvent event;
+
+            XNextEvent(wm.display, &event);
+            events_dispatch(&event);
+        }
+        /* Keep the clock current even while clients continuously generate
+         * events; bar_tick() is cheap and redraws only when the minute changes. */
+        bar_tick();
+        if (!wm.running) {
+            break;
+        }
+
+        descriptor.fd = ConnectionNumber(wm.display);
+        descriptor.events = POLLIN;
+        descriptor.revents = 0;
+        result = poll(&descriptor, 1U, bar_next_timeout_ms());
+        if (result == 0) {
+            bar_tick();
+        } else if (result < 0 && errno != EINTR) {
+            perror(AWM_NAME ": poll");
+            wm.running = false;
+        }
+    }
+}
+
+void wm_cleanup(void)
+{
+    if (wm.display == NULL) {
+        return;
+    }
+
+    keyboard_ungrab_keys();
+    client_cleanup_all();
+    bar_cleanup();
+    ewmh_cleanup();
+    desktop_cleanup();
+    draw_cleanup();
+
+    if (wm.move_cursor != None) {
+        XFreeCursor(wm.display, wm.move_cursor);
+    }
+    if (wm.resize_cursor != None) {
+        XFreeCursor(wm.display, wm.resize_cursor);
+    }
+
+    XSync(wm.display, False);
+    XCloseDisplay(wm.display);
+    wm.display = NULL;
+}
+
+void wm_restart(void)
+{
+    char **arguments = wm.argv;
+    const char *program = arguments[0];
+
+    fprintf(stdout, "%s: reiniciando sin cerrar las aplicaciones...\n", AWM_NAME);
+    fflush(stdout);
+    wm.restarting = true;
+    wm_cleanup();
+
+    execvp(program, arguments);
+    fprintf(stderr,
+            "%s: no se pudo reiniciar '%s': %s\n",
+            AWM_NAME,
+            program,
+            strerror(errno));
+    _exit(EXIT_FAILURE);
+}
+
+int main(int argc, char **argv)
+{
+    if (!wm_initialize(argc, argv)) {
+        return EXIT_FAILURE;
+    }
+
+    wm_run();
+    wm_cleanup();
+    return EXIT_SUCCESS;
+}
