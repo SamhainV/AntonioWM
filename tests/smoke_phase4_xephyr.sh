@@ -316,6 +316,23 @@ wait "$WORKAREA_SPY_PID" 2>/dev/null || true
 ewmh_request close "$STABLE_WORKAREA"
 wait_for_gone "$STABLE_WORKAREA"
 
+start_client "P4 Initial Iconic" "220x100+720+620" none \
+    --initial-iconic --min 1x1 --inc 1x1
+INITIAL_ICONIC=$(wait_for_window "P4 Initial Iconic")
+wait_for_managed "$INITIAL_ICONIC"
+wait_for_frame_state "$INITIAL_ICONIC" IsUnMapped
+[ "$(map_state "$INITIAL_ICONIC")" = IsUnMapped ] ||
+    fail "WM_HINTS IconicState no desmapeo el cliente."
+wait_for_property "$INITIAL_ICONIC" WM_STATE Iconic
+wait_for_property "$INITIAL_ICONIC" _NET_WM_STATE _NET_WM_STATE_HIDDEN
+DISPLAY="$NESTED_CLIENT_DISPLAY" xdotool windowmap "$INITIAL_ICONIC"
+wait_for_frame_state "$INITIAL_ICONIC" IsViewable
+wait_for_property "$INITIAL_ICONIC" WM_STATE Normal
+state_has "$INITIAL_ICONIC" _NET_WM_STATE_HIDDEN &&
+    fail "Restaurar IconicState no retiro HIDDEN."
+ewmh_request close "$INITIAL_ICONIC"
+wait_for_gone "$INITIAL_ICONIC"
+
 ROOT_HEX=$(DISPLAY="$NESTED_CLIENT_DISPLAY" xwininfo -root 2>/dev/null |
     sed -n 's/^xwininfo: Window id: \(0x[0-9a-fA-F]*\).*/\1/p')
 
@@ -339,6 +356,28 @@ wait_for_property "$DIALOG" _NET_WM_STATE _NET_WM_STATE_MODAL
 [ "$(active_window)" = "$DIALOG" ] || fail "El dialogo no recibio el foco."
 [ "$(stack_index "$DIALOG")" -gt "$(stack_index "$PARENT")" ] ||
     fail "El dialogo no permanece por encima de su padre."
+
+PARENT_NORMAL_X=$(frame_field "$PARENT" X)
+PARENT_NORMAL_Y=$(frame_field "$PARENT" Y)
+PARENT_NORMAL_WIDTH=$(frame_field "$PARENT" WIDTH)
+PARENT_NORMAL_HEIGHT=$(frame_field "$PARENT" HEIGHT)
+ewmh_request state "$PARENT" add MAXIMIZED_VERT MAXIMIZED_HORZ
+wait_for_property "$PARENT" _NET_WM_STATE _NET_WM_STATE_MAXIMIZED_VERT
+ewmh_request state "$PARENT" add FULLSCREEN
+wait_for_property "$PARENT" _NET_WM_STATE _NET_WM_STATE_FULLSCREEN
+ewmh_request state "$PARENT" remove MAXIMIZED_VERT MAXIMIZED_HORZ
+sleep 0.2
+state_has "$PARENT" _NET_WM_STATE_MAXIMIZED_VERT &&
+    fail "No se retiro el maximizado durante fullscreen."
+ewmh_request state "$PARENT" remove FULLSCREEN
+sleep 0.2
+if state_has "$PARENT" _NET_WM_STATE_FULLSCREEN ||
+   [ "$(frame_field "$PARENT" X)" != "$PARENT_NORMAL_X" ] ||
+   [ "$(frame_field "$PARENT" Y)" != "$PARENT_NORMAL_Y" ] ||
+   [ "$(frame_field "$PARENT" WIDTH)" != "$PARENT_NORMAL_WIDTH" ] ||
+   [ "$(frame_field "$PARENT" HEIGHT)" != "$PARENT_NORMAL_HEIGHT" ]; then
+    fail "Salir de fullscreen tras retirar maximizado no restauro la geometria normal."
+fi
 
 ewmh_request desktop "$PARENT" 1
 attempt=0
@@ -393,6 +432,29 @@ for special_type in MENU DROPDOWN_MENU POPUP_MENU TOOLTIP NOTIFICATION SPLASH DE
     ewmh_request close "$SPECIAL"
     wait_for_gone "$SPECIAL"
 done
+
+start_client "P4 Dynamic Type" "190x80+690+190" none --min 1x1 --inc 1x1
+DYNAMIC_TYPE=$(wait_for_window "P4 Dynamic Type")
+wait_for_managed "$DYNAMIC_TYPE"
+ewmh_request active "$DYNAMIC_TYPE" 2 0
+sleep 0.1
+[ "$(active_window)" = "$DYNAMIC_TYPE" ] ||
+    fail "No se pudo enfocar el cliente antes de cambiar su tipo."
+DISPLAY="$NESTED_CLIENT_DISPLAY" xprop -id "$DYNAMIC_TYPE" \
+    -f _NET_WM_WINDOW_TYPE 32a \
+    -set _NET_WM_WINDOW_TYPE _NET_WM_WINDOW_TYPE_TOOLTIP
+attempt=0
+while [ -n "$(child_named "$(frame_of "$DYNAMIC_TYPE")" \
+                    "AntonioWM Titlebar")" ] ||
+      [ "$(active_window)" = "$DYNAMIC_TYPE" ]; do
+    attempt=$((attempt + 1))
+    [ "$attempt" -le 100 ] ||
+        fail "Cambiar a TOOLTIP dejo decoracion o foco incompatibles."
+    sleep 0.1
+done
+wait_for_property "$DYNAMIC_TYPE" _NET_FRAME_EXTENTS "0, 0, 0, 0"
+ewmh_request close "$DYNAMIC_TYPE"
+wait_for_gone "$DYNAMIC_TYPE"
 
 start_client "P4 Motif None" "210x90+620+430" none --motif none \
     --min 1x1 --inc 1x1
@@ -462,6 +524,32 @@ sleep 0.2
 [ "$(window_field "$SIZE_HINTS" HEIGHT)" = 210 ] ||
     fail "_NET_MOVERESIZE_WINDOW no respeto maximo, minimo, incrementos y aspecto."
 
+start_client "P4 Aligned Hints" "100x100+650+300" none --min 100x100 \
+    --base 1x1 --inc 64x64
+ALIGNED_HINTS=$(wait_for_window "P4 Aligned Hints")
+wait_for_managed "$ALIGNED_HINTS"
+[ "$(window_field "$ALIGNED_HINTS" WIDTH)" = 129 ] &&
+[ "$(window_field "$ALIGNED_HINTS" HEIGHT)" = 129 ] ||
+    fail "Minimo y resize increments produjeron un tamano fuera de la rejilla ICCCM."
+ewmh_request close "$ALIGNED_HINTS"
+wait_for_gone "$ALIGNED_HINTS"
+
+# Los campos de WM_NORMAL_HINTS son long y pueden superar el rango util del
+# protocolo X11. La decoracion no debe desbordar al sumar borde y titulo.
+start_client "P4 Extreme Hints" "120x80+680+330" none \
+    --min 2147483647x2147483647 --inc 1x1
+EXTREME_HINTS=$(wait_for_window "P4 Extreme Hints")
+wait_for_managed "$EXTREME_HINTS"
+EXTREME_FRAME_WIDTH=$(frame_field "$EXTREME_HINTS" WIDTH)
+EXTREME_FRAME_HEIGHT=$(frame_field "$EXTREME_HINTS" HEIGHT)
+[ "$EXTREME_FRAME_WIDTH" -gt 0 ] &&
+[ "$EXTREME_FRAME_WIDTH" -le 65535 ] &&
+[ "$EXTREME_FRAME_HEIGHT" -gt 0 ] &&
+[ "$EXTREME_FRAME_HEIGHT" -le 65535 ] ||
+    fail "WM_NORMAL_HINTS extremo desbordo la geometria del protocolo X11."
+ewmh_request close "$EXTREME_HINTS"
+wait_for_gone "$EXTREME_HINTS"
+
 DISPLAY="$NESTED_CLIENT_DISPLAY" xdotool mousemove 250 250
 ewmh_request interactive "$SIZE_HINTS" 250 250 8
 sleep 0.1
@@ -475,7 +563,7 @@ start_client "P4 Dock Partial" "1024x40+0+0" none --type DOCK \
     --min 1x1 --inc 1x1 --strut-partial-top 40
 DOCK_PARTIAL=$(wait_for_window "P4 Dock Partial")
 wait_for_managed "$DOCK_PARTIAL"
-wait_for_workarea "0, 68, 1024, 700"
+wait_for_workarea "0, 66, 1024, 674"
 BAR=$(DISPLAY="$NESTED_CLIENT_DISPLAY" xdotool search --name '^AntonioWM Bar$' |
     head -n 1)
 [ "$(window_field "$BAR" Y)" = 40 ] ||
@@ -484,27 +572,27 @@ BAR=$(DISPLAY="$NESTED_CLIENT_DISPLAY" xdotool search --name '^AntonioWM Bar$' |
 ewmh_request state "$PARENT" add MAXIMIZED_VERT MAXIMIZED_HORZ
 sleep 0.2
 [ "$(frame_field "$PARENT" X)" = 0 ] &&
-[ "$(frame_field "$PARENT" Y)" = 68 ] &&
+[ "$(frame_field "$PARENT" Y)" = 66 ] &&
 [ "$(frame_field "$PARENT" WIDTH)" = 1024 ] &&
-[ "$(frame_field "$PARENT" HEIGHT)" = 700 ] ||
+[ "$(frame_field "$PARENT" HEIGHT)" = 674 ] ||
     fail "El maximizado no respeto strut parcial mas barra propia."
 ewmh_request state "$PARENT" remove MAXIMIZED_VERT MAXIMIZED_HORZ
 ewmh_request close "$DOCK_PARTIAL"
 wait_for_gone "$DOCK_PARTIAL"
-wait_for_workarea "0, 28, 1024, 740"
+wait_for_workarea "0, 26, 1024, 714"
 [ "$(window_field "$BAR" Y)" = 0 ] || fail "La barra no volvio a y=0."
 
 start_client "P4 Dock Legacy" "30x768+0+0" none --type DOCK \
     --min 1x1 --inc 1x1 --strut 30,0,0,0
 DOCK_LEGACY=$(wait_for_window "P4 Dock Legacy")
 wait_for_managed "$DOCK_LEGACY"
-wait_for_workarea "30, 28, 994, 740"
+wait_for_workarea "30, 26, 994, 714"
 [ "$(window_field "$BAR" X)" = 30 ] &&
 [ "$(window_field "$BAR" WIDTH)" = 994 ] ||
     fail "La barra no convivio con _NET_WM_STRUT legado."
 ewmh_request close "$DOCK_LEGACY"
 wait_for_gone "$DOCK_LEGACY"
-wait_for_workarea "0, 28, 1024, 740"
+wait_for_workarea "0, 26, 1024, 714"
 
 start_client "P4 Below" "180x100+400+260" below --min 1x1 --inc 1x1
 BELOW=$(wait_for_window "P4 Below")

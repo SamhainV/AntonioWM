@@ -45,7 +45,9 @@ static void handle_enter_notify(const XCrossingEvent *event)
     Client *client;
 
     wm.last_event_time = event->time;
-    if (AWM_FOCUS_FOLLOWS_MOUSE == 0 || event->mode != NotifyNormal ||
+    (void)taskbar_handle_enter(event);
+    decor_handle_enter(event);
+    if (!wm.config.focus_follows_mouse || event->mode != NotifyNormal ||
         event->detail == NotifyInferior) {
         return;
     }
@@ -53,6 +55,45 @@ static void handle_enter_notify(const XCrossingEvent *event)
     client = client_find_any(event->window);
     if (client != NULL && client->visible) {
         client_focus(client, false);
+    }
+}
+
+static void handle_leave_notify(const XCrossingEvent *event)
+{
+    wm.last_event_time = event->time;
+    (void)taskbar_handle_leave(event);
+    decor_handle_leave(event);
+}
+
+static void handle_normal_hints(Client *client)
+{
+    int width;
+    int height;
+
+    if (client->maximized) {
+        width = client->old_width;
+        height = client->old_height;
+        client_apply_size_hints(client, &width, &height);
+        client->old_width = width;
+        client->old_height = height;
+        return;
+    }
+    if (client->fullscreen) {
+        width = client->fullscreen_width;
+        height = client->fullscreen_height;
+        client_apply_size_hints(client, &width, &height);
+        client->fullscreen_width = width;
+        client->fullscreen_height = height;
+        return;
+    }
+
+    width = client->width;
+    height = client->height;
+    client_apply_size_hints(client, &width, &height);
+    if (width != client->width || height != client->height) {
+        client->width = width;
+        client->height = height;
+        decor_apply_geometry(client);
     }
 }
 
@@ -67,9 +108,13 @@ static void handle_property_notify(const XPropertyEvent *event)
     } else if (client != NULL && event->atom == XA_WM_HINTS) {
         hints_refresh_focus_model(client);
         hints_refresh_urgency(client);
+        client_reconsider_focus(client);
         bar_update();
     } else if (client != NULL && event->atom == wm.atoms.wm_protocols) {
         hints_refresh_focus_model(client);
+        client_reconsider_focus(client);
+    } else if (client != NULL && event->atom == XA_WM_NORMAL_HINTS) {
+        handle_normal_hints(client);
     } else if (client != NULL &&
                (event->atom == XA_WM_TRANSIENT_FOR ||
                 event->atom == wm.atoms.net_wm_window_type ||
@@ -116,6 +161,29 @@ static void handle_focus_in(const XFocusChangeEvent *event)
     }
 }
 
+static void refresh_screen_layout(bool refresh_monitors)
+{
+    XWindowAttributes attributes;
+    Client *client;
+
+    if (XGetWindowAttributes(wm.display, wm.root, &attributes) != 0) {
+        wm.screen_width = attributes.width;
+        wm.screen_height = attributes.height;
+    } else {
+        wm.screen_width = DisplayWidth(wm.display, wm.screen);
+        wm.screen_height = DisplayHeight(wm.display, wm.screen);
+    }
+    if (refresh_monitors) {
+        monitor_refresh();
+    }
+    for (client = wm.clients; client != NULL; client = client->next) {
+        ewmh_refresh_strut(client);
+    }
+    ewmh_recalculate_workarea();
+    stacking_enforce();
+    bar_update();
+}
+
 static void handle_configure_notify(const XConfigureEvent *event)
 {
     if (event->window != wm.root) {
@@ -124,16 +192,7 @@ static void handle_configure_notify(const XConfigureEvent *event)
 
     wm.screen_width = event->width;
     wm.screen_height = event->height;
-    {
-        Client *client;
-
-        for (client = wm.clients; client != NULL; client = client->next) {
-            ewmh_refresh_strut(client);
-        }
-    }
-    ewmh_recalculate_workarea();
-    stacking_enforce();
-    bar_update();
+    refresh_screen_layout(true);
 }
 
 static void handle_client_message(const XClientMessageEvent *event)
@@ -172,6 +231,11 @@ static void handle_map_notify(const XMapEvent *event)
 
 void events_dispatch(XEvent *event)
 {
+    if (monitor_handle_event(event)) {
+        refresh_screen_layout(true);
+        return;
+    }
+
     switch (event->type) {
     case MapRequest:
         handle_map_request(&event->xmaprequest);
@@ -186,21 +250,29 @@ void events_dispatch(XEvent *event)
         handle_unmap_notify(&event->xunmap);
         break;
     case ButtonPress:
-        if (!bar_handle_button_press(&event->xbutton)) {
+        if (!taskbar_handle_button_press(&event->xbutton) &&
+            !bar_handle_button_press(&event->xbutton)) {
             mouse_handle_button_press(&event->xbutton);
         }
         break;
     case ButtonRelease:
-        mouse_handle_button_release(&event->xbutton);
+        if (!taskbar_handle_button_release(&event->xbutton)) {
+            mouse_handle_button_release(&event->xbutton);
+        }
         break;
     case MotionNotify:
-        mouse_handle_motion(&event->xmotion);
+        if (!taskbar_handle_motion(&event->xmotion)) {
+            mouse_handle_motion(&event->xmotion);
+        }
         break;
     case KeyPress:
         keyboard_handle_keypress(&event->xkey);
         break;
     case EnterNotify:
         handle_enter_notify(&event->xcrossing);
+        break;
+    case LeaveNotify:
+        handle_leave_notify(&event->xcrossing);
         break;
     case PropertyNotify:
         handle_property_notify(&event->xproperty);
@@ -216,6 +288,7 @@ void events_dispatch(XEvent *event)
         break;
     case Expose:
         bar_handle_expose(&event->xexpose);
+        taskbar_handle_expose(&event->xexpose);
         decor_handle_expose(&event->xexpose);
         break;
     case MappingNotify:

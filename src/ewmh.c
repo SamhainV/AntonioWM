@@ -1,6 +1,8 @@
 #include "wm.h"
 #include "config.h"
 
+#include <limits.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -906,6 +908,7 @@ void ewmh_get_workarea(unsigned int desktop, WorkArea *area)
     unsigned long bottom;
     int usable_width;
     int usable_height;
+    int taskbar_height;
 
     if (area == NULL) {
         return;
@@ -913,10 +916,163 @@ void ewmh_get_workarea(unsigned int desktop, WorkArea *area)
     external_struts(desktop, &left, &right, &top, &bottom);
     area->x = (int)left;
     area->y = (int)top + (int)AWM_BAR_HEIGHT;
+    taskbar_height = wm.config.taskbar_enabled
+                         ? (int)wm.config.taskbar_height
+                         : 0;
     usable_width = wm.screen_width - (int)left - (int)right;
-    usable_height = wm.screen_height - area->y - (int)bottom;
+    usable_height = wm.screen_height - area->y - (int)bottom - taskbar_height;
     area->width = usable_width > 0 ? usable_width : 1;
     area->height = usable_height > 0 ? usable_height : 1;
+}
+
+static bool strut_range_intersects_monitor(unsigned long start,
+                                           unsigned long end,
+                                           int monitor_start,
+                                           int monitor_length)
+{
+    int64_t monitor_end;
+
+    if (start > end || monitor_length <= 0) {
+        return false;
+    }
+    monitor_end = (int64_t)monitor_start + monitor_length - 1;
+    return (int64_t)end >= monitor_start && (int64_t)start <= monitor_end;
+}
+
+static bool rectangles_intersect(int left_x,
+                                 int left_y,
+                                 int left_width,
+                                 int left_height,
+                                 int right_x,
+                                 int right_y,
+                                 int right_width,
+                                 int right_height)
+{
+    return left_width > 0 && left_height > 0 &&
+           right_width > 0 && right_height > 0 &&
+           (int64_t)left_x < (int64_t)right_x + right_width &&
+           (int64_t)right_x < (int64_t)left_x + left_width &&
+           (int64_t)left_y < (int64_t)right_y + right_height &&
+           (int64_t)right_y < (int64_t)left_y + left_height;
+}
+
+void ewmh_get_monitor_workarea(unsigned int desktop,
+                               const Monitor *monitor,
+                               WorkArea *area)
+{
+    Client *client;
+    int left;
+    int top;
+    int right;
+    int bottom;
+    int bar_x;
+    int bar_y;
+    int bar_width;
+    int bar_height;
+
+    if (monitor == NULL || area == NULL) {
+        return;
+    }
+
+    left = monitor->x;
+    top = monitor->y;
+    right = monitor->x + monitor->width;
+    bottom = monitor->y + monitor->height;
+
+    for (client = wm.clients; client != NULL; client = client->next) {
+        int boundary;
+
+        if (!client->has_strut || !client->mapped || client->minimized ||
+            (!client->sticky && client->desktop != desktop)) {
+            continue;
+        }
+        if (strut_range_intersects_monitor(client->strut[4],
+                                           client->strut[5],
+                                           monitor->y,
+                                           monitor->height)) {
+            boundary = (int)limited_reservation(client->strut[0],
+                                                wm.screen_width);
+            if (boundary > left && monitor->x < boundary) {
+                left = boundary < right ? boundary : right;
+            }
+        }
+        if (strut_range_intersects_monitor(client->strut[6],
+                                           client->strut[7],
+                                           monitor->y,
+                                           monitor->height)) {
+            boundary = wm.screen_width -
+                       (int)limited_reservation(client->strut[1],
+                                                wm.screen_width);
+            if (boundary < right && monitor->x + monitor->width > boundary) {
+                right = boundary > left ? boundary : left;
+            }
+        }
+        if (strut_range_intersects_monitor(client->strut[8],
+                                           client->strut[9],
+                                           monitor->x,
+                                           monitor->width)) {
+            boundary = (int)limited_reservation(client->strut[2],
+                                                wm.screen_height);
+            if (boundary > top && monitor->y < boundary) {
+                top = boundary < bottom ? boundary : bottom;
+            }
+        }
+        if (strut_range_intersects_monitor(client->strut[10],
+                                           client->strut[11],
+                                           monitor->x,
+                                           monitor->width)) {
+            boundary = wm.screen_height -
+                       (int)limited_reservation(client->strut[3],
+                                                wm.screen_height);
+            if (boundary < bottom && monitor->y + monitor->height > boundary) {
+                bottom = boundary > top ? boundary : top;
+            }
+        }
+    }
+
+    ewmh_get_bar_geometry(&bar_x, &bar_y, &bar_width, &bar_height);
+    if (rectangles_intersect(monitor->x,
+                             monitor->y,
+                             monitor->width,
+                             monitor->height,
+                             bar_x,
+                             bar_y,
+                             bar_width,
+                             bar_height)) {
+        if (bar_y + bar_height > top) {
+            top = bar_y + bar_height;
+        }
+        if (top > bottom) {
+            top = bottom;
+        }
+    }
+
+    if (wm.config.taskbar_enabled) {
+        ewmh_get_taskbar_geometry(&bar_x,
+                                  &bar_y,
+                                  &bar_width,
+                                  &bar_height);
+        if (rectangles_intersect(monitor->x,
+                                 monitor->y,
+                                 monitor->width,
+                                 monitor->height,
+                                 bar_x,
+                                 bar_y,
+                                 bar_width,
+                                 bar_height)) {
+            if (bar_y < bottom) {
+                bottom = bar_y;
+            }
+            if (bottom < top) {
+                bottom = top;
+            }
+        }
+    }
+
+    area->x = left;
+    area->y = top;
+    area->width = right > left ? right - left : 1;
+    area->height = bottom > top ? bottom - top : 1;
 }
 
 void ewmh_get_bar_geometry(int *x, int *y, int *width, int *height)
@@ -936,10 +1092,35 @@ void ewmh_get_bar_geometry(int *x, int *y, int *width, int *height)
     *height = AWM_BAR_HEIGHT > 0U ? (int)AWM_BAR_HEIGHT : 1;
 }
 
+void ewmh_get_taskbar_geometry(int *x, int *y, int *width, int *height)
+{
+    unsigned long left;
+    unsigned long right;
+    unsigned long top;
+    unsigned long bottom;
+    int usable_width;
+    int configured_height;
+
+    external_struts(wm.current_desktop, &left, &right, &top, &bottom);
+    (void)top;
+    usable_width = wm.screen_width - (int)left - (int)right;
+    configured_height = wm.config.taskbar_height > 0U
+                            ? (int)wm.config.taskbar_height
+                            : 1;
+    *x = (int)left;
+    *y = wm.screen_height - (int)bottom - configured_height;
+    if (*y < 0) {
+        *y = 0;
+    }
+    *width = usable_width > 0 ? usable_width : 1;
+    *height = configured_height;
+}
+
 void ewmh_recalculate_workarea(void)
 {
     ewmh_update_desktop_properties();
     bar_reconfigure();
+    taskbar_reconfigure();
     desktop_reapply_screen_states();
 }
 
@@ -949,7 +1130,6 @@ void ewmh_update_desktop_properties(void)
     unsigned long *viewport;
     unsigned long *workarea;
     char *names;
-    static const char *const configured_names[] = AWM_DESKTOP_NAMES;
     size_t names_capacity;
     size_t names_length = 0U;
     unsigned int desktop;
@@ -1008,11 +1188,12 @@ void ewmh_update_desktop_properties(void)
     for (desktop = 0U; desktop < wm.desktop_count; ++desktop) {
         int written;
 
-        if (desktop < sizeof(configured_names) / sizeof(configured_names[0])) {
+        if (desktop < AWM_RUNTIME_MAX_DESKTOPS &&
+            wm.config.desktop_names[desktop][0] != '\0') {
             written = snprintf(names + names_length,
                                names_capacity - names_length,
                                "%s",
-                               configured_names[desktop]);
+                               wm.config.desktop_names[desktop]);
         } else {
             written = snprintf(names + names_length,
                                names_capacity - names_length,
@@ -1140,6 +1321,17 @@ static int requested_gravity(const Client *client, unsigned long flags)
     return gravity;
 }
 
+static int saturated_long(long value, int minimum, int maximum)
+{
+    if (value < (long)minimum) {
+        return minimum;
+    }
+    if (value > (long)maximum) {
+        return maximum;
+    }
+    return (int)value;
+}
+
 static void apply_moveresize_gravity(const Client *client,
                                      int gravity,
                                      bool x_is_set,
@@ -1192,16 +1384,16 @@ static void handle_moveresize_window(Client *client,
         return;
     }
     if ((flags & (1UL << 8)) != 0UL) {
-        x = (int)event->data.l[1];
+        x = saturated_long(event->data.l[1], SHRT_MIN, SHRT_MAX);
     }
     if ((flags & (1UL << 9)) != 0UL) {
-        y = (int)event->data.l[2];
+        y = saturated_long(event->data.l[2], SHRT_MIN, SHRT_MAX);
     }
     if ((flags & (1UL << 10)) != 0UL) {
-        width = (int)event->data.l[3];
+        width = saturated_long(event->data.l[3], INT_MIN, INT_MAX);
     }
     if ((flags & (1UL << 11)) != 0UL) {
-        height = (int)event->data.l[4];
+        height = saturated_long(event->data.l[4], INT_MIN, INT_MAX);
     }
     apply_moveresize_gravity(client,
                              gravity,
@@ -1261,6 +1453,9 @@ bool ewmh_handle_client_message(const XClientMessageEvent *event)
     }
 
     if (event->message_type == wm.atoms.net_active_window) {
+        if (event->data.l[1] != 0L) {
+            wm.last_event_time = (Time)event->data.l[1];
+        }
         if (!activation_is_allowed(client, event)) {
             set_client_attention(client, true);
             return true;
@@ -1286,6 +1481,9 @@ bool ewmh_handle_client_message(const XClientMessageEvent *event)
                 client_set_visible(client, true);
             }
             ewmh_update_client_state(client);
+            ewmh_recalculate_workarea();
+            stacking_enforce();
+            bar_update();
         } else if (desktop < (unsigned long)wm.desktop_count) {
             client->sticky = false;
             if (client->desktop == (unsigned int)desktop) {
@@ -1300,6 +1498,9 @@ bool ewmh_handle_client_message(const XClientMessageEvent *event)
                 desktop_move_client(client, (unsigned int)desktop);
             }
             ewmh_update_client_state(client);
+            ewmh_recalculate_workarea();
+            stacking_enforce();
+            bar_update();
         }
         return true;
     }
@@ -1319,8 +1520,12 @@ bool ewmh_handle_client_message(const XClientMessageEvent *event)
 
     if (event->message_type == wm.atoms.net_wm_moveresize) {
         mouse_begin_moveresize(client,
-                               (int)event->data.l[0],
-                               (int)event->data.l[1],
+                               saturated_long(event->data.l[0],
+                                              SHRT_MIN,
+                                              SHRT_MAX),
+                               saturated_long(event->data.l[1],
+                                              SHRT_MIN,
+                                              SHRT_MAX),
                                (int)event->data.l[2],
                                (Time)event->data.l[3]);
         return true;

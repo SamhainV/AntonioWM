@@ -1,25 +1,32 @@
 CC ?= cc
 
 CPPFLAGS ?=
-CPPFLAGS += -D_POSIX_C_SOURCE=200809L -Iinclude -I.
+XFT_CFLAGS ?= $(shell pkg-config --cflags xft 2>/dev/null || \
+	printf '%s' '-I/usr/include/freetype2')
+XFT_LIBS ?= $(shell pkg-config --libs xft 2>/dev/null || printf '%s' '-lXft')
+CPPFLAGS += -D_POSIX_C_SOURCE=200809L -Iinclude -I. $(XFT_CFLAGS)
 
 CFLAGS ?= -O2
 CFLAGS += -std=c11 -Wall -Wextra -Wpedantic -Wshadow -Wformat=2 \
           -Wundef -Wpointer-arith -Wstrict-prototypes -Wmissing-prototypes
 
 LDFLAGS ?=
-LDLIBS += -lX11 -lXrandr
+LDLIBS += -lX11 -lXrandr -lXinerama $(XFT_LIBS) -lz
 
 TARGET := antoniowm
 SOURCES := src/main.c src/events.c src/client.c src/keyboard.c src/mouse.c \
            src/desktop.c src/ewmh.c src/hints.c src/stacking.c src/draw.c \
-           src/decor.c src/bar.c
+           src/decor.c src/bar.c src/taskbar.c src/runtime_config.c src/icon.c \
+           src/monitor.c
 OBJECTS := $(patsubst src/%.c,build/%.o,$(SOURCES))
 DEPENDENCIES := $(OBJECTS:.o=.d)
 TEST_CLIENT := tests/awm-test-client
 TEST_EWMH := tests/awm-ewmh-request
+TEST_PIXEL := tests/awm-pixel-probe
+TEST_CLIPBOARD := tests/awm-clipboard-helper
 
-.PHONY: all clean debug check test-client smoke
+.PHONY: all clean debug check test-client smoke audit-smoke multimonitor-smoke \
+	screenshot-smoke
 
 all: $(TARGET)
 
@@ -38,7 +45,7 @@ check:
 	$(MAKE) clean
 	$(MAKE) CFLAGS="-O2 -std=c11 -Wall -Wextra -Wpedantic -Wshadow -Wformat=2 -Wundef -Wpointer-arith -Wstrict-prototypes -Wmissing-prototypes -Werror" all
 
-test-client: $(TEST_CLIENT) $(TEST_EWMH)
+test-client: $(TEST_CLIENT) $(TEST_EWMH) $(TEST_PIXEL) $(TEST_CLIPBOARD)
 
 $(TEST_CLIENT): tests/test_client.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ $< $(LDLIBS)
@@ -46,11 +53,30 @@ $(TEST_CLIENT): tests/test_client.c
 $(TEST_EWMH): tests/ewmh_request.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ $< $(LDLIBS)
 
+$(TEST_PIXEL): tests/pixel_probe.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ $< $(LDLIBS)
+
+$(TEST_CLIPBOARD): tests/clipboard_helper.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ $< -lX11
+
 smoke: all test-client
 	./tests/smoke_xephyr.sh
 	./tests/smoke_phase4_xephyr.sh
+	./tests/smoke_taskbar_xephyr.sh
+	./tests/smoke_multimonitor_resize_xephyr.sh
+	./tests/smoke_screenshot_xephyr.sh
+
+multimonitor-smoke: all test-client
+	./tests/smoke_multimonitor_resize_xephyr.sh
+
+screenshot-smoke: all test-client
+	./tests/smoke_screenshot_xephyr.sh
+
+audit-smoke: all test-client
+	./tests/audit_stress_xephyr.sh
 
 clean:
-	rm -rf build $(TARGET) $(TEST_CLIENT) $(TEST_EWMH)
+	rm -rf build $(TARGET) $(TEST_CLIENT) $(TEST_EWMH) $(TEST_PIXEL) \
+		$(TEST_CLIPBOARD)
 
 -include $(DEPENDENCIES)

@@ -14,6 +14,7 @@ typedef struct {
     bool input;
     bool take_focus;
     bool urgent;
+    bool initial_iconic;
     bool override_redirect;
     int min_width;
     int min_height;
@@ -104,6 +105,8 @@ static void parse_options(int argc, char **argv, Options *options)
             options->take_focus = true;
         } else if (strcmp(argv[index], "--urgent") == 0) {
             options->urgent = true;
+        } else if (strcmp(argv[index], "--initial-iconic") == 0) {
+            options->initial_iconic = true;
         } else if (strcmp(argv[index], "--override") == 0) {
             options->override_redirect = true;
         } else if (strcmp(argv[index], "--min") == 0 && index + 1 < argc) {
@@ -351,6 +354,10 @@ int main(int argc, char **argv)
     memset(&wm_hints, 0, sizeof(wm_hints));
     wm_hints.flags = InputHint;
     wm_hints.input = options.input ? True : False;
+    if (options.initial_iconic) {
+        wm_hints.flags |= StateHint;
+        wm_hints.initial_state = IconicState;
+    }
     if (options.urgent) {
         wm_hints.flags |= XUrgencyHint;
     }

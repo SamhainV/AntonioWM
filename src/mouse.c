@@ -13,6 +13,23 @@ static Client *client_from_button_event(const XButtonEvent *event)
     return client;
 }
 
+static Window button_window(const Client *client, ClientPart part)
+{
+    if (client == NULL) {
+        return None;
+    }
+    if (part == CLIENT_PART_MINIMIZE) {
+        return client->button_minimize;
+    }
+    if (part == CLIENT_PART_MAXIMIZE) {
+        return client->button_maximize;
+    }
+    if (part == CLIENT_PART_CLOSE) {
+        return client->button_close;
+    }
+    return None;
+}
+
 static void grab_modified_button(Client *client,
                                  unsigned int button,
                                  Cursor cursor,
@@ -128,6 +145,44 @@ static void begin_drag(Client *client,
     wm.drag.pointer_grabbed = result == GrabSuccess;
 }
 
+static bool is_resize_part(ClientPart part)
+{
+    return part == CLIENT_PART_RESIZE_LEFT ||
+           part == CLIENT_PART_RESIZE_RIGHT ||
+           part == CLIENT_PART_RESIZE_BOTTOM ||
+           part == CLIENT_PART_RESIZE_BOTTOM_LEFT ||
+           part == CLIENT_PART_RESIZE_BOTTOM_RIGHT;
+}
+
+static void configure_resize_part(ClientPart part, Time time)
+{
+    Cursor cursor = wm.resize_cursor;
+
+    wm.drag.resize_left = part == CLIENT_PART_RESIZE_LEFT ||
+                          part == CLIENT_PART_RESIZE_BOTTOM_LEFT;
+    wm.drag.resize_top = false;
+    wm.drag.resize_horizontal = part != CLIENT_PART_RESIZE_BOTTOM;
+    wm.drag.resize_vertical = part == CLIENT_PART_RESIZE_BOTTOM ||
+                              part == CLIENT_PART_RESIZE_BOTTOM_LEFT ||
+                              part == CLIENT_PART_RESIZE_BOTTOM_RIGHT;
+
+    if (part == CLIENT_PART_RESIZE_LEFT) {
+        cursor = wm.resize_left_cursor;
+    } else if (part == CLIENT_PART_RESIZE_RIGHT) {
+        cursor = wm.resize_right_cursor;
+    } else if (part == CLIENT_PART_RESIZE_BOTTOM) {
+        cursor = wm.resize_bottom_cursor;
+    } else if (part == CLIENT_PART_RESIZE_BOTTOM_LEFT) {
+        cursor = wm.resize_bottom_left_cursor;
+    }
+    if (wm.drag.pointer_grabbed) {
+        XChangeActivePointerGrab(wm.display,
+                                 ButtonReleaseMask | PointerMotionMask,
+                                 cursor,
+                                 time);
+    }
+}
+
 void mouse_handle_button_press(XButtonEvent *event)
 {
     Client *client = client_from_button_event(event);
@@ -153,13 +208,7 @@ void mouse_handle_button_press(XButtonEvent *event)
     if (part == CLIENT_PART_MINIMIZE || part == CLIENT_PART_MAXIMIZE ||
         part == CLIENT_PART_CLOSE) {
         if (event->button == Button1) {
-            if (part == CLIENT_PART_MINIMIZE) {
-                client_minimize(client);
-            } else if (part == CLIENT_PART_MAXIMIZE) {
-                client_toggle_maximized(client);
-            } else {
-                client_close(client);
-            }
+            decor_button_press(client, part);
         }
         return;
     }
@@ -177,8 +226,11 @@ void mouse_handle_button_press(XButtonEvent *event)
         begin_drag(client, DRAG_MOVE, event, true);
         return;
     }
-    if (part == CLIENT_PART_FRAME && event->button == Button1) {
+    if (is_resize_part(part) && event->button == Button1) {
         begin_drag(client, DRAG_RESIZE, event, true);
+        if (wm.drag.client == client) {
+            configure_resize_part(part, event->time);
+        }
         return;
     }
 
@@ -189,7 +241,29 @@ void mouse_handle_button_press(XButtonEvent *event)
 
 void mouse_handle_button_release(XButtonEvent *event)
 {
+    Client *pressed = wm.pressed_button_client;
+    ClientPart pressed_part = wm.pressed_button_part;
+
     wm.last_event_time = event->time;
+    if (event->button == Button1 && pressed != NULL) {
+        Window expected = button_window(pressed, pressed_part);
+        bool activate = event->window == expected &&
+                        event->x >= 0 && event->y >= 0 &&
+                        event->x < (int)AWM_BUTTON_SIZE &&
+                        event->y < (int)AWM_BUTTON_SIZE;
+
+        decor_button_release(pressed);
+        if (activate) {
+            if (pressed_part == CLIENT_PART_MINIMIZE) {
+                client_minimize(pressed);
+            } else if (pressed_part == CLIENT_PART_MAXIMIZE) {
+                client_toggle_maximized(pressed);
+            } else if (pressed_part == CLIENT_PART_CLOSE) {
+                client_close(pressed);
+            }
+        }
+        return;
+    }
     if (wm.drag.pointer_grabbed) {
         XUngrabPointer(wm.display, event->time);
     }

@@ -2,7 +2,9 @@
 #include "config.h"
 
 #include <stdio.h>
+#include <signal.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 static void update_numlock_mask(void)
@@ -73,29 +75,46 @@ static void grab_key(KeySym symbol, unsigned int modifiers)
     }
 }
 
-static void spawn_terminal(void)
+void command_spawn(const char *command)
 {
-    const char *command = getenv("ANTONIOWM_TERMINAL");
-    pid_t child = fork();
-
     if (command == NULL || command[0] == '\0') {
-        command = AWM_TERMINAL;
-    }
-
-    if (child < 0) {
-        perror(AWM_NAME ": fork");
         return;
     }
 
-    if (child == 0) {
-        if (wm.display != NULL) {
-            close(ConnectionNumber(wm.display));
+    {
+        pid_t child = fork();
+
+        if (child < 0) {
+            perror(AWM_NAME ": fork");
+            return;
         }
-        (void)setsid();
-        execl("/bin/sh", "sh", "-c", command, (char *)NULL);
-        perror(AWM_NAME ": no se pudo abrir el terminal");
-        _exit(127);
+
+        if (child == 0) {
+            struct sigaction default_action;
+
+            if (wm.display != NULL) {
+                close(ConnectionNumber(wm.display));
+            }
+            memset(&default_action, 0, sizeof(default_action));
+            default_action.sa_handler = SIG_DFL;
+            sigemptyset(&default_action.sa_mask);
+            (void)sigaction(SIGCHLD, &default_action, NULL);
+            (void)setsid();
+            execl("/bin/sh", "sh", "-c", command, (char *)NULL);
+            perror(AWM_NAME ": no se pudo ejecutar el comando");
+            _exit(127);
+        }
     }
+}
+
+static void spawn_terminal(void)
+{
+    const char *command = getenv("ANTONIOWM_TERMINAL");
+
+    if (command == NULL || command[0] == '\0') {
+        command = wm.config.terminal;
+    }
+    command_spawn(command);
 }
 
 unsigned int keyboard_clean_modifiers(unsigned int state)
@@ -118,6 +137,7 @@ void keyboard_grab_keys(void)
     grab_key(AWM_MAXIMIZE_KEY, AWM_SUPER_MOD);
     grab_key(AWM_FULLSCREEN_KEY, AWM_SUPER_MOD);
     grab_key(AWM_RESTART_KEY, AWM_RESTART_MOD);
+    grab_key(AWM_SCREENSHOT_KEY, AWM_SCREENSHOT_MOD);
 
     keyboard_desktops = wm.desktop_count < 9U ? wm.desktop_count : 9U;
     for (desktop = 0U; desktop < keyboard_desktops; ++desktop) {
@@ -168,6 +188,9 @@ void keyboard_handle_keypress(XKeyEvent *event)
         client_toggle_maximized(wm.focused);
     } else if (symbol == AWM_FULLSCREEN_KEY && modifiers == AWM_SUPER_MOD) {
         client_toggle_fullscreen(wm.focused);
+    } else if (symbol == AWM_SCREENSHOT_KEY &&
+               modifiers == AWM_SCREENSHOT_MOD) {
+        command_spawn(wm.config.screenshot_command);
     } else if (symbol == AWM_RESTART_KEY && modifiers == AWM_RESTART_MOD) {
         wm_restart();
     }

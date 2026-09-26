@@ -16,6 +16,13 @@
 WM wm;
 
 static bool another_wm_detected;
+static volatile sig_atomic_t stop_requested;
+
+static void request_clean_stop(int signal_number)
+{
+    (void)signal_number;
+    stop_requested = 1;
+}
 
 static int startup_xerror(Display *display, XErrorEvent *error)
 {
@@ -178,13 +185,16 @@ static bool claim_root_window(void)
 bool wm_initialize(int argc, char **argv)
 {
     struct sigaction child_action;
+    struct sigaction stop_action;
 
     memset(&wm, 0, sizeof(wm));
     wm.argc = argc;
     wm.argv = argv;
     wm.last_event_time = CurrentTime;
+    stop_requested = 0;
 
     (void)setlocale(LC_CTYPE, "");
+    runtime_config_load();
 
     wm.display = XOpenDisplay(NULL);
     if (wm.display == NULL) {
@@ -207,17 +217,19 @@ bool wm_initialize(int argc, char **argv)
     }
 
     prime_randr_state();
+    monitor_initialize();
 
     if (!desktop_initialize()) {
+        monitor_cleanup();
         XCloseDisplay(wm.display);
         wm.display = NULL;
         return false;
     }
     ewmh_initialize();
 
-    wm.focused_border = allocate_color(AWM_COLOR_FOCUSED,
+    wm.focused_border = allocate_color(AWM_COLOR_BORDER_ACTIVE,
                                        WhitePixel(wm.display, wm.screen));
-    wm.unfocused_border = allocate_color(AWM_COLOR_UNFOCUSED,
+    wm.unfocused_border = allocate_color(AWM_COLOR_BORDER_INACTIVE,
                                          BlackPixel(wm.display, wm.screen));
     wm.title_active = allocate_color(AWM_COLOR_TITLE_ACTIVE,
                                      wm.focused_border);
@@ -229,12 +241,20 @@ bool wm_initialize(int argc, char **argv)
                                             WhitePixel(wm.display, wm.screen));
     wm.button_background = allocate_color(AWM_COLOR_BUTTON,
                                           wm.title_inactive);
+    wm.button_hover = allocate_color(AWM_COLOR_BUTTON_HOVER,
+                                     wm.button_background);
+    wm.button_pressed = allocate_color(AWM_COLOR_BUTTON_PRESSED,
+                                       wm.title_inactive);
     wm.button_symbol = allocate_color(AWM_COLOR_BUTTON_SYMBOL,
                                       WhitePixel(wm.display, wm.screen));
+    wm.button_outline = allocate_color(AWM_COLOR_BUTTON_OUTLINE,
+                                       wm.unfocused_border);
     wm.bar_background = allocate_color(AWM_COLOR_BAR_BACKGROUND,
                                        BlackPixel(wm.display, wm.screen));
     wm.bar_foreground = allocate_color(AWM_COLOR_BAR_FOREGROUND,
                                        WhitePixel(wm.display, wm.screen));
+    wm.bar_item = allocate_color(AWM_COLOR_BAR_ITEM,
+                                 wm.bar_background);
     wm.bar_selected = allocate_color(AWM_COLOR_BAR_SELECTED,
                                      wm.title_active);
     wm.bar_active_window = allocate_color(AWM_COLOR_BAR_ACTIVE_WINDOW,
@@ -243,12 +263,21 @@ bool wm_initialize(int argc, char **argv)
                                       wm.title_inactive);
     wm.bar_urgent = allocate_color(AWM_COLOR_BAR_URGENT,
                                    wm.title_active);
+    wm.bar_separator = allocate_color(AWM_COLOR_BAR_SEPARATOR,
+                                      wm.unfocused_border);
+    wm.normal_cursor = XCreateFontCursor(wm.display, XC_left_ptr);
     wm.move_cursor = XCreateFontCursor(wm.display, XC_fleur);
     wm.resize_cursor = XCreateFontCursor(wm.display, XC_bottom_right_corner);
+    wm.resize_left_cursor = XCreateFontCursor(wm.display, XC_left_side);
+    wm.resize_right_cursor = XCreateFontCursor(wm.display, XC_right_side);
+    wm.resize_bottom_cursor = XCreateFontCursor(wm.display, XC_bottom_side);
+    wm.resize_bottom_left_cursor =
+        XCreateFontCursor(wm.display, XC_bottom_left_corner);
 
     if (!draw_initialize()) {
         ewmh_cleanup();
         desktop_cleanup();
+        monitor_cleanup();
         XCloseDisplay(wm.display);
         wm.display = NULL;
         return false;
@@ -257,6 +286,17 @@ bool wm_initialize(int argc, char **argv)
         draw_cleanup();
         ewmh_cleanup();
         desktop_cleanup();
+        monitor_cleanup();
+        XCloseDisplay(wm.display);
+        wm.display = NULL;
+        return false;
+    }
+    if (!taskbar_initialize()) {
+        bar_cleanup();
+        draw_cleanup();
+        ewmh_cleanup();
+        desktop_cleanup();
+        monitor_cleanup();
         XCloseDisplay(wm.display);
         wm.display = NULL;
         return false;
@@ -268,11 +308,23 @@ bool wm_initialize(int argc, char **argv)
     sigemptyset(&child_action.sa_mask);
     (void)sigaction(SIGCHLD, &child_action, NULL);
 
+    memset(&stop_action, 0, sizeof(stop_action));
+    stop_action.sa_handler = request_clean_stop;
+    sigemptyset(&stop_action.sa_mask);
+    if (sigaction(SIGINT, &stop_action, NULL) != 0) {
+        perror(AWM_NAME ": sigaction(SIGINT)");
+    }
+    if (sigaction(SIGTERM, &stop_action, NULL) != 0) {
+        perror(AWM_NAME ": sigaction(SIGTERM)");
+    }
+
     keyboard_grab_keys();
     scan_existing_windows();
     ewmh_update_client_list();
     bar_update();
     bar_raise();
+    taskbar_raise();
+    stacking_enforce();
 
     wm.running = true;
     XSync(wm.display, False);
@@ -290,11 +342,12 @@ bool wm_initialize(int argc, char **argv)
 
 void wm_run(void)
 {
-    while (wm.running) {
+    while (wm.running && stop_requested == 0) {
         struct pollfd descriptor;
         int result;
 
-        while (wm.running && XPending(wm.display) > 0) {
+        while (wm.running && stop_requested == 0 &&
+               XPending(wm.display) > 0) {
             XEvent event;
 
             XNextEvent(wm.display, &event);
@@ -303,7 +356,7 @@ void wm_run(void)
         /* Keep the clock current even while clients continuously generate
          * events; bar_tick() is cheap and redraws only when the minute changes. */
         bar_tick();
-        if (!wm.running) {
+        if (!wm.running || stop_requested != 0) {
             break;
         }
 
@@ -328,16 +381,33 @@ void wm_cleanup(void)
 
     keyboard_ungrab_keys();
     client_cleanup_all();
+    taskbar_cleanup();
     bar_cleanup();
     ewmh_cleanup();
     desktop_cleanup();
     draw_cleanup();
+    monitor_cleanup();
 
+    if (wm.normal_cursor != None) {
+        XFreeCursor(wm.display, wm.normal_cursor);
+    }
     if (wm.move_cursor != None) {
         XFreeCursor(wm.display, wm.move_cursor);
     }
     if (wm.resize_cursor != None) {
         XFreeCursor(wm.display, wm.resize_cursor);
+    }
+    if (wm.resize_left_cursor != None) {
+        XFreeCursor(wm.display, wm.resize_left_cursor);
+    }
+    if (wm.resize_right_cursor != None) {
+        XFreeCursor(wm.display, wm.resize_right_cursor);
+    }
+    if (wm.resize_bottom_cursor != None) {
+        XFreeCursor(wm.display, wm.resize_bottom_cursor);
+    }
+    if (wm.resize_bottom_left_cursor != None) {
+        XFreeCursor(wm.display, wm.resize_bottom_left_cursor);
     }
 
     XSync(wm.display, False);
@@ -366,6 +436,13 @@ void wm_restart(void)
 
 int main(int argc, char **argv)
 {
+    if (argc > 1 &&
+        (strcmp(argv[1], "--version") == 0 ||
+         strcmp(argv[1], "-v") == 0)) {
+        puts(AWM_NAME " " AWM_VERSION);
+        return EXIT_SUCCESS;
+    }
+
     if (!wm_initialize(argc, argv)) {
         return EXIT_FAILURE;
     }

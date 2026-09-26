@@ -192,16 +192,19 @@ wait_for_window()
 click_frame_button()
 {
     button_frame=$(frame_of "$1")
-    button_width=$(window_field "$button_frame" WIDTH)
-    button_x=$((button_width - 14))
     case "$2" in
-        close) : ;;
-        maximize) button_x=$((button_x - 21)) ;;
-        minimize) button_x=$((button_x - 42)) ;;
+        close) button_name="AntonioWM Close" ;;
+        maximize) button_name="AntonioWM Maximize" ;;
+        minimize) button_name="AntonioWM Minimize" ;;
         *) fail "Boton de prueba desconocido: $2" ;;
     esac
+    button_window=$(child_named "$button_frame" "$button_name")
+    [ -n "$button_window" ] || fail "No se encontro $button_name."
+    button_width=$(window_field "$button_window" WIDTH)
+    button_height=$(window_field "$button_window" HEIGHT)
     DISPLAY="$NESTED_CLIENT_DISPLAY" xdotool \
-        mousemove --window "$button_frame" "$button_x" 14 click 1
+        mousemove --window "$button_window" \
+        $((button_width / 2)) $((button_height / 2)) click 1
 }
 
 click_bar()
@@ -233,9 +236,11 @@ click_bar_client()
         fail "No se encontro el cliente $target_client en la barra."
     fi
 
-    slot_width=$((512 / visible_count))
-    slot_x=$((226 + target_index * slot_width + slot_width / 2))
-    [ "$slot_x" -lt 738 ] || slot_x=737
+    slot_available=530
+    slot_width=$(((slot_available - (visible_count - 1) * 4) / visible_count))
+    [ "$slot_width" -le 180 ] || slot_width=180
+    slot_x=$((220 + target_index * (slot_width + 4) + slot_width / 2))
+    [ "$slot_x" -lt 750 ] || slot_x=749
     click_bar "$slot_x"
 }
 
@@ -258,7 +263,8 @@ done
     exit 1
 }
 
-if command -v xterm >/dev/null 2>&1; then
+if [ "${ANTONIOWM_SKIP_XTERM:-0}" != 1 ] &&
+   command -v xterm >/dev/null 2>&1; then
     # The container cannot chown pseudo-terminals to the traditional tty group.
     # These flags disable utmp and terminal messages only for this test run.
     ANTONIOWM_TERMINAL=${ANTONIOWM_TEST_TERMINAL:-"xterm +ut -mesg"}
@@ -297,8 +303,8 @@ printf '%s\n' "$ROOT_PROPERTIES" |
     grep -q '_NET_CURRENT_DESKTOP(CARDINAL) = 0' ||
     fail "AntonioWM no inicio en el primer escritorio."
 printf '%s\n' "$ROOT_PROPERTIES" |
-    grep -q '_NET_WORKAREA(CARDINAL) = 0, 28, 1024, 740' ||
-    fail "_NET_WORKAREA no reserva la barra."
+    grep -q '_NET_WORKAREA(CARDINAL) = 0, 26, 1024, 714' ||
+    fail "_NET_WORKAREA no reserva las barras superior e inferior."
 for atom in _NET_ACTIVE_WINDOW _NET_CLIENT_LIST _NET_CLIENT_LIST_STACKING \
             _NET_CURRENT_DESKTOP _NET_NUMBER_OF_DESKTOPS _NET_WORKAREA \
             _NET_FRAME_EXTENTS _NET_REQUEST_FRAME_EXTENTS \
@@ -321,9 +327,19 @@ BAR_WINDOW=$(DISPLAY="$NESTED_CLIENT_DISPLAY" \
 if [ -z "$BAR_WINDOW" ] || [ "$(window_field "$BAR_WINDOW" X)" != 0 ] ||
    [ "$(window_field "$BAR_WINDOW" Y)" != 0 ] ||
    [ "$(window_field "$BAR_WINDOW" WIDTH)" != 1024 ] ||
-   [ "$(window_field "$BAR_WINDOW" HEIGHT)" != 28 ] ||
+   [ "$(window_field "$BAR_WINDOW" HEIGHT)" != 26 ] ||
    [ "$(map_state "$BAR_WINDOW")" != IsViewable ]; then
-    fail "La barra no ocupa 1024x28+0+0."
+    fail "La barra no ocupa 1024x26+0+0."
+fi
+TASKBAR_WINDOW=$(DISPLAY="$NESTED_CLIENT_DISPLAY" \
+    xdotool search --name '^AntonioWM Taskbar$' 2>/dev/null | head -n 1 || true)
+if [ -z "$TASKBAR_WINDOW" ] ||
+   [ "$(window_field "$TASKBAR_WINDOW" X)" != 0 ] ||
+   [ "$(window_field "$TASKBAR_WINDOW" Y)" != 740 ] ||
+   [ "$(window_field "$TASKBAR_WINDOW" WIDTH)" != 1024 ] ||
+   [ "$(window_field "$TASKBAR_WINDOW" HEIGHT)" != 28 ] ||
+   [ "$(map_state "$TASKBAR_WINDOW")" != IsViewable ]; then
+    fail "La barra inferior no ocupa 1024x28+0+740."
 fi
 click_bar 149
 wait_for_desktop 1
@@ -357,7 +373,7 @@ FRAME_TWO=$(frame_of "$WINDOW_TWO")
 if [ "$(frame_field "$WINDOW_ONE" X)" != 80 ] ||
    [ "$(frame_field "$WINDOW_ONE" Y)" != 90 ] ||
    [ "$(frame_field "$WINDOW_ONE" WIDTH)" != 324 ] ||
-   [ "$(frame_field "$WINDOW_ONE" HEIGHT)" != 228 ] ||
+   [ "$(frame_field "$WINDOW_ONE" HEIGHT)" != 226 ] ||
    [ "$(frame_field "$WINDOW_TWO" X)" != 430 ] ||
    [ "$(frame_field "$WINDOW_TWO" Y)" != 250 ]; then
     fail "El reparenting altero una geometria explicita."
@@ -374,8 +390,21 @@ for managed in "$WINDOW_ONE:$FRAME_ONE" "$WINDOW_TWO:$FRAME_TWO"; do
         fail "El cliente reparentado conserva un borde propio."
     DISPLAY="$NESTED_CLIENT_DISPLAY" xprop -id "$managed_client" \
         _NET_FRAME_EXTENTS |
-        grep -q '_NET_FRAME_EXTENTS(CARDINAL) = 2, 2, 26, 2' ||
+        grep -q '_NET_FRAME_EXTENTS(CARDINAL) = 2, 2, 24, 2' ||
         fail "El cliente no publica los extents de su decoracion."
+done
+TITLEBAR_ONE=$(child_named "$FRAME_ONE" "AntonioWM Titlebar")
+if [ "$(window_field "$TITLEBAR_ONE" WIDTH)" != 320 ] ||
+   [ "$(window_field "$TITLEBAR_ONE" HEIGHT)" != 22 ]; then
+    fail "La barra de titulo no conserva la geometria compacta 320x22."
+fi
+for button_name in "AntonioWM Minimize" "AntonioWM Maximize" \
+                   "AntonioWM Close"; do
+    BUTTON_WINDOW=$(child_named "$FRAME_ONE" "$button_name")
+    if [ "$(window_field "$BUTTON_WINDOW" WIDTH)" != 16 ] ||
+       [ "$(window_field "$BUTTON_WINDOW" HEIGHT)" != 16 ]; then
+        fail "Los botones de titulo no tienen un tamano uniforme de 16x16."
+    fi
 done
 for action in _NET_WM_ACTION_CLOSE _NET_WM_ACTION_MINIMIZE \
               _NET_WM_ACTION_MAXIMIZE_VERT _NET_WM_ACTION_MAXIMIZE_HORZ \
@@ -452,7 +481,7 @@ sleep 0.2
 if [ "$(frame_field "$WINDOW_TWO" X)" != 360 ] ||
    [ "$(frame_field "$WINDOW_TWO" Y)" != 210 ] ||
    [ "$(frame_field "$WINDOW_TWO" WIDTH)" != 384 ] ||
-   [ "$(frame_field "$WINDOW_TWO" HEIGHT)" != 268 ]; then
+   [ "$(frame_field "$WINDOW_TWO" HEIGHT)" != 266 ]; then
     fail "ConfigureRequest no actualizo frame/cliente."
 fi
 
@@ -468,9 +497,9 @@ while :; do
     if state_has "$WINDOW_TWO" _NET_WM_STATE_MAXIMIZED_VERT &&
        state_has "$WINDOW_TWO" _NET_WM_STATE_MAXIMIZED_HORZ &&
        [ "$(frame_field "$WINDOW_TWO" X)" = 0 ] &&
-       [ "$(frame_field "$WINDOW_TWO" Y)" = 28 ] &&
+       [ "$(frame_field "$WINDOW_TWO" Y)" = 26 ] &&
        [ "$(frame_field "$WINDOW_TWO" WIDTH)" = 1024 ] &&
-       [ "$(frame_field "$WINDOW_TWO" HEIGHT)" = 740 ]; then
+       [ "$(frame_field "$WINDOW_TWO" HEIGHT)" = 714 ]; then
         break
     fi
     attempt=$((attempt + 1))
@@ -478,7 +507,7 @@ while :; do
     sleep 0.1
 done
 if [ "$(xwin_field "$WINDOW_TWO" Width)" != 1020 ] ||
-   [ "$(xwin_field "$WINDOW_TWO" Height)" != 712 ]; then
+   [ "$(xwin_field "$WINDOW_TWO" Height)" != 688 ]; then
     fail "El contenido maximizado tiene geometria incorrecta."
 fi
 DISPLAY="$NESTED_CLIENT_DISPLAY" xdotool key super+m
@@ -493,7 +522,7 @@ fi
 click_frame_button "$WINDOW_TWO" maximize
 sleep 0.2
 if ! state_has "$WINDOW_TWO" _NET_WM_STATE_MAXIMIZED_HORZ ||
-   [ "$(frame_field "$WINDOW_TWO" Y)" != 28 ]; then
+   [ "$(frame_field "$WINDOW_TWO" Y)" != 26 ]; then
     fail "El boton maximizar no uso la logica de Super+M."
 fi
 click_frame_button "$WINDOW_TWO" maximize
@@ -522,6 +551,19 @@ DISPLAY="$NESTED_CLIENT_DISPLAY" xdotool key alt+shift+Tab
 sleep 0.15
 [ "$(DISPLAY="$NESTED_CLIENT_DISPLAY" xdotool getwindowfocus)" = "$WINDOW_TWO" ] ||
     fail "Alt+Mayus+Tab incluyo una ventana minimizada."
+
+# ICCCM: al iconificar se desmapea tambien el cliente. Un XMapWindow del
+# propio cliente debe generar MapRequest y restaurarlo.
+[ "$(map_state "$WINDOW_ONE")" = IsUnMapped ] ||
+    fail "La minimizacion dejo mapeada la ventana cliente."
+DISPLAY="$NESTED_CLIENT_DISPLAY" xdotool windowmap "$WINDOW_ONE"
+wait_for_frame_state "$WINDOW_ONE" IsViewable
+if ! wm_state_has "$WINDOW_ONE" Normal ||
+   state_has "$WINDOW_ONE" _NET_WM_STATE_HIDDEN; then
+    fail "MapRequest no desiconifico la ventana minimizada."
+fi
+click_frame_button "$WINDOW_ONE" minimize
+wait_for_frame_state "$WINDOW_ONE" IsUnMapped
 
 # La posicion de W1 se deriva de _NET_CLIENT_LIST para no depender del orden
 # en que dos procesos concurrentes alcancen MapRequest.
@@ -570,9 +612,9 @@ if state_has "$WINDOW_FULLSCREEN" _NET_WM_STATE_FULLSCREEN ||
    [ "$(frame_field "$WINDOW_FULLSCREEN" X)" != 150 ] ||
    [ "$(frame_field "$WINDOW_FULLSCREEN" Y)" != 120 ] ||
    [ "$(frame_field "$WINDOW_FULLSCREEN" WIDTH)" != 304 ] ||
-   [ "$(frame_field "$WINDOW_FULLSCREEN" HEIGHT)" != 208 ] ||
+   [ "$(frame_field "$WINDOW_FULLSCREEN" HEIGHT)" != 206 ] ||
    ! DISPLAY="$NESTED_CLIENT_DISPLAY" xprop -id "$WINDOW_FULLSCREEN" \
-       _NET_FRAME_EXTENTS | grep -q '= 2, 2, 26, 2' ||
+       _NET_FRAME_EXTENTS | grep -q '= 2, 2, 24, 2' ||
    [ "$(map_state "$FULLSCREEN_TITLE")" != IsViewable ]; then
     fail "Salir de fullscreen no restauro marco y geometria."
 fi
@@ -594,7 +636,7 @@ AUTO_TWO_Y=$(frame_field "$WINDOW_AUTO_TWO" Y)
 if [ "$AUTO_ONE_X" = "$AUTO_TWO_X" ] && [ "$AUTO_ONE_Y" = "$AUTO_TWO_Y" ]; then
     fail "La cascada superpuso exactamente las ventanas."
 fi
-if [ "$AUTO_ONE_Y" -lt 28 ] || [ "$AUTO_TWO_Y" -lt 28 ]; then
+if [ "$AUTO_ONE_Y" -lt 26 ] || [ "$AUTO_TWO_Y" -lt 26 ]; then
     fail "La cascada invadio la barra."
 fi
 
@@ -666,7 +708,8 @@ while kill -0 "$CLIENT_AUTO_TWO_PID" 2>/dev/null; do
 done
 CLIENT_AUTO_TWO_PID=
 
-if command -v xterm >/dev/null 2>&1; then
+if [ "${ANTONIOWM_SKIP_XTERM:-0}" != 1 ] &&
+   command -v xterm >/dev/null 2>&1; then
     DISPLAY="$NESTED_CLIENT_DISPLAY" xdotool key super+Return
     attempt=0
     while :; do
@@ -759,9 +802,9 @@ DISPLAY="$NESTED_CLIENT_DISPLAY" xdotool key super+2
 wait_for_desktop 1
 wait_for_frame_state "$WINDOW_ONE" IsViewable
 if [ "$(frame_field "$WINDOW_ONE" X)" != 0 ] ||
-   [ "$(frame_field "$WINDOW_ONE" Y)" != 28 ] ||
+   [ "$(frame_field "$WINDOW_ONE" Y)" != 26 ] ||
    [ "$(frame_field "$WINDOW_ONE" WIDTH)" != 1024 ] ||
-   [ "$(frame_field "$WINDOW_ONE" HEIGHT)" != 740 ]; then
+   [ "$(frame_field "$WINDOW_ONE" HEIGHT)" != 714 ]; then
     fail "El maximizado no sobrevivio al reinicio."
 fi
 DISPLAY="$NESTED_CLIENT_DISPLAY" xdotool key super+m

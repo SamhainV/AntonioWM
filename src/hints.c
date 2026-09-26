@@ -303,10 +303,24 @@ static int clamp_dimension(int value, int minimum, int maximum)
 
 static int snap_down(int value, int base, int increment)
 {
-    if (increment <= 0 || value <= base) {
+    long long distance;
+    long long result;
+
+    if (increment <= 1) {
         return value;
     }
-    return base + ((value - base) / increment) * increment;
+    distance = (long long)value - (long long)base;
+    if (distance <= 0LL) {
+        return base;
+    }
+    result = (long long)base + (distance / increment) * increment;
+    if (result > INT_MAX) {
+        return INT_MAX;
+    }
+    if (result < INT_MIN) {
+        return INT_MIN;
+    }
+    return (int)result;
 }
 
 static int snap_up(int value, int base, int increment)
@@ -314,8 +328,11 @@ static int snap_up(int value, int base, int increment)
     long long distance;
     long long result;
 
-    if (increment <= 0 || value <= base) {
+    if (increment <= 1) {
         return value;
+    }
+    if (value <= base) {
+        return base;
     }
     distance = (long long)value - base;
     result = (long long)base +
@@ -323,14 +340,57 @@ static int snap_up(int value, int base, int increment)
     return result > INT_MAX ? INT_MAX : (int)result;
 }
 
+static int align_dimension(int value,
+                           int minimum,
+                           int maximum,
+                           int base,
+                           int increment)
+{
+    int aligned = snap_down(clamp_dimension(value, minimum, maximum),
+                            base,
+                            increment);
+
+    if (aligned < minimum) {
+        aligned = snap_up(minimum, base, increment);
+    }
+    if (aligned > maximum) {
+        aligned = snap_down(maximum, base, increment);
+    }
+    return clamp_dimension(aligned, minimum, maximum);
+}
+
+static int protocol_dimension_limit(const Client *client, bool horizontal)
+{
+    int decorations = 2 * decor_border_width(client);
+
+    if (!horizontal) {
+        decorations += decor_title_height(client);
+    }
+    if (decorations >= (int)USHRT_MAX) {
+        return 1;
+    }
+    return (int)USHRT_MAX - decorations;
+}
+
+static int bounded_long_long(long long value, int minimum, int maximum)
+{
+    if (value < (long long)minimum) {
+        return minimum;
+    }
+    if (value > (long long)maximum) {
+        return maximum;
+    }
+    return (int)value;
+}
+
 void hints_apply_size(Client *client, int *width, int *height)
 {
     XSizeHints hints;
     long supplied = 0L;
-    int minimum_width = AWM_MIN_CLIENT_WIDTH;
-    int minimum_height = AWM_MIN_CLIENT_HEIGHT;
-    int maximum_width = INT_MAX;
-    int maximum_height = INT_MAX;
+    int maximum_width;
+    int maximum_height;
+    int minimum_width;
+    int minimum_height;
     int base_width = 0;
     int base_height = 0;
     int adjusted_width;
@@ -341,6 +401,10 @@ void hints_apply_size(Client *client, int *width, int *height)
     if (client == NULL || width == NULL || height == NULL) {
         return;
     }
+    maximum_width = protocol_dimension_limit(client, true);
+    maximum_height = protocol_dimension_limit(client, false);
+    minimum_width = clamp_dimension(AWM_MIN_CLIENT_WIDTH, 1, maximum_width);
+    minimum_height = clamp_dimension(AWM_MIN_CLIENT_HEIGHT, 1, maximum_height);
     if (XGetWMNormalHints(wm.display, client->window, &hints, &supplied) == 0) {
         *width = clamp_dimension(*width, minimum_width, maximum_width);
         *height = clamp_dimension(*height, minimum_height, maximum_height);
@@ -355,11 +419,13 @@ void hints_apply_size(Client *client, int *width, int *height)
             minimum_height = hints.min_height;
         }
     }
+    minimum_width = clamp_dimension(minimum_width, 1, maximum_width);
+    minimum_height = clamp_dimension(minimum_height, 1, maximum_height);
     if ((hints.flags & PMaxSize) != 0L) {
-        if (hints.max_width > 0) {
+        if (hints.max_width > 0 && hints.max_width < maximum_width) {
             maximum_width = hints.max_width;
         }
-        if (hints.max_height > 0) {
+        if (hints.max_height > 0 && hints.max_height < maximum_height) {
             maximum_height = hints.max_height;
         }
     }
@@ -371,11 +437,11 @@ void hints_apply_size(Client *client, int *width, int *height)
     }
 
     if ((hints.flags & PBaseSize) != 0L) {
-        base_width = hints.base_width;
-        base_height = hints.base_height;
+        base_width = clamp_dimension(hints.base_width, 0, maximum_width);
+        base_height = clamp_dimension(hints.base_height, 0, maximum_height);
     } else if ((hints.flags & PMinSize) != 0L) {
-        base_width = hints.min_width;
-        base_height = hints.min_height;
+        base_width = clamp_dimension(hints.min_width, 0, maximum_width);
+        base_height = clamp_dimension(hints.min_height, 0, maximum_height);
     }
 
     adjusted_width = clamp_dimension(*width, minimum_width, maximum_width);
@@ -388,12 +454,16 @@ void hints_apply_size(Client *client, int *width, int *height)
         if (hints.height_inc > 0) {
             height_increment = hints.height_inc;
         }
-        adjusted_width = snap_down(adjusted_width,
-                                   base_width,
-                                   width_increment);
-        adjusted_height = snap_down(adjusted_height,
-                                    base_height,
-                                    height_increment);
+        adjusted_width = align_dimension(adjusted_width,
+                                         minimum_width,
+                                         maximum_width,
+                                         base_width,
+                                         width_increment);
+        adjusted_height = align_dimension(adjusted_height,
+                                          minimum_height,
+                                          maximum_height,
+                                          base_height,
+                                          height_increment);
     }
 
     if ((hints.flags & PAspect) != 0L &&
@@ -412,9 +482,9 @@ void hints_apply_size(Client *client, int *width, int *height)
                 (content_height * hints.min_aspect.x + hints.min_aspect.y - 1) /
                 hints.min_aspect.y;
             long long required_total = required_content + base_width;
-            int required = snap_up(required_total > INT_MAX
-                                       ? INT_MAX
-                                       : (int)required_total,
+            int required = snap_up(bounded_long_long(required_total,
+                                                     minimum_width,
+                                                     maximum_width),
                                    base_width,
                                    width_increment);
 
@@ -422,10 +492,17 @@ void hints_apply_size(Client *client, int *width, int *height)
                 adjusted_width = required;
             } else {
                 content_width = (long long)adjusted_width - base_width;
-                adjusted_height = snap_down(
-                    base_height +
-                        (int)(content_width * hints.min_aspect.y /
-                              hints.min_aspect.x),
+                long long candidate =
+                    (long long)base_height +
+                    content_width * hints.min_aspect.y /
+                        hints.min_aspect.x;
+
+                adjusted_height = align_dimension(
+                    bounded_long_long(candidate,
+                                      minimum_height,
+                                      maximum_height),
+                    minimum_height,
+                    maximum_height,
                     base_height,
                     height_increment);
             }
@@ -435,9 +512,9 @@ void hints_apply_size(Client *client, int *width, int *height)
                 (content_width * hints.max_aspect.y + hints.max_aspect.x - 1) /
                 hints.max_aspect.x;
             long long required_total = required_content + base_height;
-            int required = snap_up(required_total > INT_MAX
-                                       ? INT_MAX
-                                       : (int)required_total,
+            int required = snap_up(bounded_long_long(required_total,
+                                                     minimum_height,
+                                                     maximum_height),
                                    base_height,
                                    height_increment);
 
@@ -445,18 +522,50 @@ void hints_apply_size(Client *client, int *width, int *height)
                 adjusted_height = required;
             } else {
                 content_height = (long long)adjusted_height - base_height;
-                adjusted_width = snap_down(
-                    base_width +
-                        (int)(content_height * hints.max_aspect.x /
-                              hints.max_aspect.y),
+                long long candidate =
+                    (long long)base_width +
+                    content_height * hints.max_aspect.x /
+                        hints.max_aspect.y;
+
+                adjusted_width = align_dimension(
+                    bounded_long_long(candidate,
+                                      minimum_width,
+                                      maximum_width),
+                    minimum_width,
+                    maximum_width,
                     base_width,
                     width_increment);
             }
         }
     }
 
-    *width = clamp_dimension(adjusted_width, minimum_width, maximum_width);
-    *height = clamp_dimension(adjusted_height, minimum_height, maximum_height);
+    *width = align_dimension(adjusted_width,
+                             minimum_width,
+                             maximum_width,
+                             base_width,
+                             width_increment);
+    *height = align_dimension(adjusted_height,
+                              minimum_height,
+                              maximum_height,
+                              base_height,
+                              height_increment);
+}
+
+bool hints_wants_initial_iconic(const Client *client)
+{
+    XWMHints *hints;
+    bool iconic = false;
+
+    if (client == NULL) {
+        return false;
+    }
+    hints = XGetWMHints(wm.display, client->window);
+    if (hints != NULL) {
+        iconic = (hints->flags & StateHint) != 0L &&
+                 hints->initial_state == IconicState;
+        XFree(hints);
+    }
+    return iconic;
 }
 
 void hints_initialize_client(Client *client)

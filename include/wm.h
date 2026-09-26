@@ -4,8 +4,41 @@
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#include <X11/Xft/Xft.h>
 
 #include <stdbool.h>
+#include <stddef.h>
+
+#define AWM_RUNTIME_MAX_LAUNCHERS 16U
+#define AWM_RUNTIME_MAX_DESKTOPS 16U
+#define AWM_RUNTIME_LABEL_LENGTH 64U
+#define AWM_RUNTIME_COMMAND_LENGTH 512U
+#define AWM_RUNTIME_PATH_LENGTH 1024U
+
+typedef struct {
+    char label[AWM_RUNTIME_LABEL_LENGTH];
+    char command[AWM_RUNTIME_COMMAND_LENGTH];
+    char icon[AWM_RUNTIME_PATH_LENGTH];
+} LauncherConfig;
+
+typedef struct {
+    char terminal[AWM_RUNTIME_COMMAND_LENGTH];
+    char screenshot_command[AWM_RUNTIME_COMMAND_LENGTH];
+    bool taskbar_enabled;
+    unsigned int taskbar_height;
+    int taskbar_gap;
+    int taskbar_padding;
+    bool focus_follows_mouse;
+    size_t launcher_count;
+    LauncherConfig launchers[AWM_RUNTIME_MAX_LAUNCHERS];
+    char desktop_names[AWM_RUNTIME_MAX_DESKTOPS][AWM_RUNTIME_LABEL_LENGTH];
+} RuntimeConfig;
+
+typedef struct {
+    unsigned int width;
+    unsigned int height;
+    unsigned char *rgba;
+} IconImage;
 
 typedef struct Client Client;
 
@@ -36,6 +69,14 @@ typedef struct {
     int width;
     int height;
 } WorkArea;
+
+typedef struct {
+    int x;
+    int y;
+    int width;
+    int height;
+    bool primary;
+} Monitor;
 
 typedef struct {
     Atom wm_protocols;
@@ -114,7 +155,12 @@ typedef enum {
     CLIENT_PART_TITLE,
     CLIENT_PART_MINIMIZE,
     CLIENT_PART_MAXIMIZE,
-    CLIENT_PART_CLOSE
+    CLIENT_PART_CLOSE,
+    CLIENT_PART_RESIZE_LEFT,
+    CLIENT_PART_RESIZE_RIGHT,
+    CLIENT_PART_RESIZE_BOTTOM,
+    CLIENT_PART_RESIZE_BOTTOM_LEFT,
+    CLIENT_PART_RESIZE_BOTTOM_RIGHT
 } ClientPart;
 
 typedef enum {
@@ -146,6 +192,11 @@ struct Client {
     Window button_minimize;
     Window button_maximize;
     Window button_close;
+    Window resize_left;
+    Window resize_right;
+    Window resize_bottom;
+    Window resize_bottom_left;
+    Window resize_bottom_right;
 
     /* Root-relative outer-frame position and client content dimensions. */
     int x;
@@ -191,6 +242,7 @@ struct Client {
     bool mapped;
     bool visible;
     unsigned int ignore_unmap;
+    ClientPart hovered_part;
     char *title;
 
     Client *previous;
@@ -203,12 +255,17 @@ typedef struct {
     Window root;
     int screen_width;
     int screen_height;
+    Monitor *monitors;
+    size_t monitor_count;
+    int randr_event_base;
+    bool randr_available;
 
     Client *clients;
     Client *clients_tail;
     Client *focused;
     Window supporting_window;
     Window bar_window;
+    Window taskbar_window;
 
     unsigned int desktop_count;
     unsigned int current_desktop;
@@ -223,28 +280,43 @@ typedef struct {
     unsigned long title_text_active;
     unsigned long title_text_inactive;
     unsigned long button_background;
+    unsigned long button_hover;
+    unsigned long button_pressed;
     unsigned long button_symbol;
+    unsigned long button_outline;
     unsigned long bar_background;
     unsigned long bar_foreground;
+    unsigned long bar_item;
     unsigned long bar_selected;
     unsigned long bar_active_window;
     unsigned long bar_minimized;
     unsigned long bar_urgent;
+    unsigned long bar_separator;
 
     GC draw_gc;
+    XftFont *xft_font;
     XFontSet font_set;
     XFontStruct *fallback_font;
     int font_ascent;
     int font_descent;
 
     unsigned int numlock_mask;
+    Cursor normal_cursor;
     Cursor move_cursor;
     Cursor resize_cursor;
+    Cursor resize_left_cursor;
+    Cursor resize_right_cursor;
+    Cursor resize_bottom_cursor;
+    Cursor resize_bottom_left_cursor;
 
     DragState drag;
+    Client *pressed_button_client;
+    ClientPart pressed_button_part;
     Time last_event_time;
     bool running;
     bool restarting;
+
+    RuntimeConfig config;
 
     int argc;
     char **argv;
@@ -257,6 +329,32 @@ bool wm_initialize(int argc, char **argv);
 void wm_run(void);
 void wm_cleanup(void);
 void wm_restart(void);
+
+/* monitor.c */
+void monitor_initialize(void);
+void monitor_refresh(void);
+void monitor_cleanup(void);
+void monitor_for_rectangle(int x,
+                           int y,
+                           int width,
+                           int height,
+                           Monitor *monitor);
+void monitor_for_client(const Client *client, Monitor *monitor);
+bool monitor_handle_event(XEvent *event);
+
+/* runtime_config.c */
+void runtime_config_load(void);
+
+/* icon.c */
+bool icon_load_png(const char *path, IconImage *image);
+void icon_free(IconImage *image);
+bool icon_draw(Drawable drawable,
+               const IconImage *image,
+               int x,
+               int y,
+               unsigned int width,
+               unsigned int height,
+               unsigned long background);
 
 /* events.c */
 void events_dispatch(XEvent *event);
@@ -292,6 +390,7 @@ bool client_is_focus_candidate(const Client *client);
 bool client_is_taskbar_visible(const Client *client);
 void client_raise(Client *client);
 void client_refresh_decor(Client *client);
+void client_reconsider_focus(Client *client);
 
 /* keyboard.c */
 void keyboard_grab_keys(void);
@@ -299,6 +398,7 @@ void keyboard_ungrab_keys(void);
 void keyboard_handle_keypress(XKeyEvent *event);
 void keyboard_refresh_mapping(XMappingEvent *event);
 unsigned int keyboard_clean_modifiers(unsigned int state);
+void command_spawn(const char *command);
 
 /* mouse.c */
 void mouse_grab_buttons(Client *client, bool focused);
@@ -358,6 +458,15 @@ void draw_text_clipped(Drawable drawable,
                        unsigned int clip_width,
                        unsigned int clip_height,
                        const char *text);
+void draw_text_ellipsized(Drawable drawable,
+                          unsigned long color,
+                          int x,
+                          int baseline,
+                          int clip_x,
+                          int clip_y,
+                          unsigned int clip_width,
+                          unsigned int clip_height,
+                          const char *text);
 
 /* decor.c */
 bool decor_create(Client *client, bool was_viewable);
@@ -367,7 +476,12 @@ void decor_move(Client *client, int x, int y);
 void decor_set_active(Client *client, bool active);
 void decor_redraw(Client *client);
 void decor_handle_expose(const XExposeEvent *event);
+void decor_handle_enter(const XCrossingEvent *event);
+void decor_handle_leave(const XCrossingEvent *event);
+void decor_button_press(Client *client, ClientPart part);
+void decor_button_release(Client *client);
 void decor_rebuild(Client *client, ClientDecor previous);
+void decor_update_cursors(Client *client);
 int decor_outer_width(const Client *client);
 int decor_outer_height(const Client *client);
 int decor_client_root_x(const Client *client);
@@ -386,6 +500,19 @@ void bar_handle_expose(const XExposeEvent *event);
 int bar_next_timeout_ms(void);
 void bar_tick(void);
 
+/* taskbar.c */
+bool taskbar_initialize(void);
+void taskbar_cleanup(void);
+void taskbar_update(void);
+void taskbar_reconfigure(void);
+void taskbar_raise(void);
+bool taskbar_handle_button_press(const XButtonEvent *event);
+bool taskbar_handle_button_release(const XButtonEvent *event);
+bool taskbar_handle_motion(const XMotionEvent *event);
+bool taskbar_handle_enter(const XCrossingEvent *event);
+bool taskbar_handle_leave(const XCrossingEvent *event);
+void taskbar_handle_expose(const XExposeEvent *event);
+
 /* ewmh.c */
 void ewmh_initialize(void);
 void ewmh_cleanup(void);
@@ -402,7 +529,11 @@ void ewmh_update_desktop_properties(void);
 void ewmh_refresh_strut(Client *client);
 void ewmh_recalculate_workarea(void);
 void ewmh_get_workarea(unsigned int desktop, WorkArea *area);
+void ewmh_get_monitor_workarea(unsigned int desktop,
+                               const Monitor *monitor,
+                               WorkArea *area);
 void ewmh_get_bar_geometry(int *x, int *y, int *width, int *height);
+void ewmh_get_taskbar_geometry(int *x, int *y, int *width, int *height);
 bool ewmh_handle_client_message(const XClientMessageEvent *event);
 
 /* hints.c */
@@ -413,6 +544,7 @@ void hints_refresh_focus_model(Client *client);
 void hints_refresh_urgency(Client *client);
 void hints_apply_size(Client *client, int *width, int *height);
 bool hints_position_is_explicit(const Client *client);
+bool hints_wants_initial_iconic(const Client *client);
 ClientDecor hints_requested_decor(const Client *client);
 
 /* stacking.c */

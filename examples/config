@@ -1,0 +1,33 @@
+# AntonioWM 0.4.10: ejemplo de configuracion de usuario.
+# Copiar como ~/.config/antoniowm/config y adaptar las rutas de iconos.
+
+terminal=xfce4-terminal
+screenshot.command=maim | xclip -selection clipboard -t image/png -i
+focus_follows_mouse=false
+
+taskbar.enabled=true
+taskbar.height=30
+taskbar.gap=4
+taskbar.padding=4
+taskbar.launcher_count=4
+
+launcher.1.label=Chrome
+launcher.1.command=google-chrome
+launcher.1.icon=icons/chrome.png
+
+launcher.2.label=Terminal
+launcher.2.command=xfce4-terminal
+launcher.2.icon=icons/terminal.png
+
+launcher.3.label=Archivos
+launcher.3.command=pcmanfm
+launcher.3.icon=icons/files.png
+
+launcher.4.label=GIMP
+launcher.4.command=gimp
+launcher.4.icon=icons/gimp.png
+
+desktop.1=Trabajo
+desktop.2=Web
+desktop.3=Multimedia
+desktop.4=Otros

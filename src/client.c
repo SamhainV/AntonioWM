@@ -124,6 +124,22 @@ static bool can_receive_focus(const Client *client)
            client_is_focus_candidate(client);
 }
 
+static void unmap_iconified_client(Client *client)
+{
+    XWindowAttributes attributes;
+
+    if (client == NULL || !client->reparented || !client->mapped ||
+        XGetWindowAttributes(wm.display, client->window, &attributes) == 0 ||
+        attributes.map_state == IsUnmapped) {
+        return;
+    }
+
+    /* Unlike hiding a desktop, ICCCM iconification must unmap the client
+     * itself.  A later XMapWindow then produces MapRequest and deiconifies it. */
+    ++client->ignore_unmap;
+    XUnmapWindow(wm.display, client->window);
+}
+
 static bool should_focus_new_client(const Client *client)
 {
     Client *parent;
@@ -196,6 +212,21 @@ ClientPart client_window_part(const Client *client, Window window)
     }
     if (window == client->button_close) {
         return CLIENT_PART_CLOSE;
+    }
+    if (window == client->resize_left) {
+        return CLIENT_PART_RESIZE_LEFT;
+    }
+    if (window == client->resize_right) {
+        return CLIENT_PART_RESIZE_RIGHT;
+    }
+    if (window == client->resize_bottom) {
+        return CLIENT_PART_RESIZE_BOTTOM;
+    }
+    if (window == client->resize_bottom_left) {
+        return CLIENT_PART_RESIZE_BOTTOM_LEFT;
+    }
+    if (window == client->resize_bottom_right) {
+        return CLIENT_PART_RESIZE_BOTTOM_RIGHT;
     }
     return CLIENT_PART_NONE;
 }
@@ -393,6 +424,9 @@ void client_manage(Window window, bool map_requested)
 
     hints_initialize_client(client);
     ewmh_read_client_state(client);
+    if (map_requested && hints_wants_initial_iconic(client)) {
+        client->minimized = true;
+    }
     transient_parent = client_find(client->transient_for);
     if (transient_parent != NULL) {
         client->desktop = transient_parent->desktop;
@@ -471,6 +505,9 @@ void client_manage(Window window, bool map_requested)
             stacking_enforce();
         }
     } else {
+        if (client->minimized) {
+            unmap_iconified_client(client);
+        }
         decor_redraw(client);
         bar_update();
     }
@@ -696,6 +733,9 @@ void client_cleanup_all(void)
         restore_normal_geometry(client);
         decor_release(client, false, client->mapped);
         XDeleteProperty(wm.display, client->window, wm.atoms.wm_state);
+        if (!wm.restarting) {
+            ewmh_clear_client_properties(client);
+        }
         free(client->title);
         free(client);
         client = next;
@@ -752,14 +792,18 @@ static void set_client_geometry(Client *client,
 
 static void apply_maximized_geometry(Client *client)
 {
+    Monitor monitor;
     WorkArea area;
     int border = decor_border_width(client);
     int title = decor_title_height(client);
     int width;
     int height;
 
-    ewmh_get_workarea(client->sticky ? wm.current_desktop : client->desktop,
-                      &area);
+    monitor_for_client(client, &monitor);
+    ewmh_get_monitor_workarea(
+        client->sticky ? wm.current_desktop : client->desktop,
+        &monitor,
+        &area);
     width = area.width - 2 * border;
     height = area.height - title - 2 * border;
 
@@ -772,11 +816,14 @@ static void apply_maximized_geometry(Client *client)
 
 static void apply_fullscreen_geometry(Client *client)
 {
+    Monitor monitor;
+
+    monitor_for_client(client, &monitor);
     set_client_geometry(client,
-                        0,
-                        0,
-                        wm.screen_width,
-                        wm.screen_height);
+                        monitor.x,
+                        monitor.y,
+                        monitor.width,
+                        monitor.height);
 }
 
 void client_set_maximized(Client *client, bool maximized)
@@ -803,7 +850,12 @@ void client_set_maximized(Client *client, bool maximized)
         }
     } else {
         client->maximized = false;
-        if (!client->fullscreen) {
+        if (client->fullscreen) {
+            client->fullscreen_x = client->old_x;
+            client->fullscreen_y = client->old_y;
+            client->fullscreen_width = client->old_width;
+            client->fullscreen_height = client->old_height;
+        } else {
             set_client_geometry(client,
                                 client->old_x,
                                 client->old_y,
@@ -853,6 +905,7 @@ void client_set_fullscreen(Client *client, bool fullscreen)
                                 client->fullscreen_height);
         }
     }
+    decor_update_cursors(client);
 
     ewmh_update_client_state(client);
     ewmh_set_frame_extents(client);
@@ -888,6 +941,7 @@ void client_set_minimized(Client *client, bool minimized)
         if (client->visible) {
             client_set_visible(client, false);
         }
+        unmap_iconified_client(client);
         if (was_focused) {
             replacement = next_mapped_client(client, 1);
             client_focus(replacement, true);
@@ -1015,6 +1069,21 @@ void client_refresh_decor(Client *client)
     ewmh_set_frame_extents(client);
     ewmh_refresh_strut(client);
     ewmh_recalculate_workarea();
+    client_reconsider_focus(client);
     stacking_enforce();
     bar_update();
+}
+
+void client_reconsider_focus(Client *client)
+{
+    Client *replacement;
+
+    if (client == NULL || wm.focused != client || can_receive_focus(client)) {
+        return;
+    }
+    replacement = next_mapped_client(client, 1);
+    if (replacement == client) {
+        replacement = NULL;
+    }
+    client_focus(replacement, true);
 }
