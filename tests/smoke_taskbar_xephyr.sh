@@ -234,27 +234,28 @@ sleep 0.4
 kill -0 "$WM_PID" 2>/dev/null || fail "AntonioWM termino al arrancar."
 
 TASKBAR_WINDOW=$(DISPLAY="$NESTED_CLIENT_DISPLAY" \
-    xdotool search --name '^AntonioWM Taskbar$' 2>/dev/null | head -n 1 || true)
-[ -n "$TASKBAR_WINDOW" ] || fail "No se creo AntonioWM Taskbar."
+    xdotool search --name '^AntonioWM Panel$' 2>/dev/null | head -n 1 || true)
+[ -n "$TASKBAR_WINDOW" ] || fail "No se creo AntonioWM Panel."
 [ "$(window_field "$TASKBAR_WINDOW" X)" = 0 ] &&
 [ "$(window_field "$TASKBAR_WINDOW" Y)" = 738 ] &&
 [ "$(window_field "$TASKBAR_WINDOW" WIDTH)" = 1024 ] &&
 [ "$(window_field "$TASKBAR_WINDOW" HEIGHT)" = 30 ] ||
     fail "La barra inferior tiene una geometria incorrecta."
 DISPLAY="$NESTED_CLIENT_DISPLAY" xprop -root _NET_WORKAREA |
-    grep -q '= 0, 26, 1024, 712' ||
-    fail "_NET_WORKAREA no reserva ambas barras."
+    grep -q '= 0, 0, 1024, 738' ||
+    fail "_NET_WORKAREA no comienza en y=0 o no reserva el panel."
 DISPLAY="$NESTED_CLIENT_DISPLAY" xprop -root _NET_DESKTOP_NAMES |
     grep -q 'Uno.*Dos.*Tres.*Cuatro' ||
     fail "No se publicaron los nombres externos de escritorios."
 DISPLAY="$NESTED_CLIENT_DISPLAY" "$PROJECT_DIR/tests/awm-pixel-probe" \
-    "$TASKBAR_WINDOW" 18 15 || fail "No se dibujo el icono PNG configurado."
+    "$TASKBAR_WINDOW" 229 15 || fail "No se dibujo el icono PNG configurado."
 grep -q "missing.png.*se usara la etiqueta 'Fallback'" "$TEST_TMP/wm.log" ||
     fail "El icono inexistente no activo el fallback de texto."
 
-# El primer boton es un icono de 30 px; los otros usan etiquetas de 78 px.
+# Tras menu y escritorios, el primer launcher es un icono de 30 px; los
+# otros usan etiquetas de 78 px.
 # Cada clic demuestra que se ejecuta exactamente el comando externo configurado.
-for launcher_x in 18 75 156 237; do
+for launcher_x in 229 286 367 448; do
     click_taskbar "$launcher_x"
     LAUNCHED=$(wait_for_window "AntonioWM test client")
     wait_for_managed "$LAUNCHED"
@@ -288,17 +289,17 @@ wait_for_focus "$WINDOW_ONE"
 DISPLAY="$NESTED_CLIENT_DISPLAY" xdotool mousemove --window "$WINDOW_TWO" 20 20
 wait_for_focus "$WINDOW_TWO"
 
-# Los cuatro launchers consumen 276 px y los botones empiezan en x=279.
-click_taskbar 379
+# Menu, escritorios y launchers terminan en x=490; las tareas usan 200 px.
+click_taskbar 590
 wait_for_focus "$WINDOW_ONE"
-click_taskbar 379
+click_taskbar 590
 wait_for_frame_state "$WINDOW_ONE" IsUnMapped
 DISPLAY="$NESTED_CLIENT_DISPLAY" xprop -id "$WINDOW_ONE" WM_STATE |
     grep -q Iconic || fail "Clic sobre la tarea activa no la minimizo."
-click_taskbar 379
+click_taskbar 590
 wait_for_frame_state "$WINDOW_ONE" IsViewable
 wait_for_focus "$WINDOW_ONE"
-click_taskbar 582
+click_taskbar 793
 wait_for_focus "$WINDOW_TWO"
 
 # SKIP_TASKBAR no debe crear un tercer boton en x=740..940.
@@ -306,19 +307,19 @@ start_client "Taskbar Skipped" "220x120+700+260" none \
     --initial-state SKIP_TASKBAR --min 1x1 --inc 1x1
 WINDOW_SKIPPED=$(wait_for_window "Taskbar Skipped")
 wait_for_managed "$WINDOW_SKIPPED"
-click_taskbar 582
+click_taskbar 793
 wait_for_focus "$WINDOW_TWO"
-click_taskbar 784
+click_taskbar 940
 [ "$(active_window)" != "$WINDOW_TWO" ] &&
     fail "SKIP_TASKBAR aparecio en la barra inferior."
 
-# Maximizado usa el espacio entre ambas barras; fullscreen usa toda la pantalla.
+# Maximizado empieza en y=0 y termina sobre el panel; fullscreen usa todo.
 DISPLAY="$NESTED_CLIENT_DISPLAY" xdotool key super+m
 sleep 0.2
 [ "$(frame_field "$WINDOW_TWO" X)" = 0 ] &&
-[ "$(frame_field "$WINDOW_TWO" Y)" = 26 ] &&
+[ "$(frame_field "$WINDOW_TWO" Y)" = 0 ] &&
 [ "$(frame_field "$WINDOW_TWO" WIDTH)" = 1024 ] &&
-[ "$(frame_field "$WINDOW_TWO" HEIGHT)" = 712 ] ||
+[ "$(frame_field "$WINDOW_TWO" HEIGHT)" = 738 ] ||
     fail "El maximizado no respeto la barra inferior."
 DISPLAY="$NESTED_CLIENT_DISPLAY" xdotool key super+f
 sleep 0.2
@@ -326,7 +327,7 @@ sleep 0.2
 [ "$(frame_field "$WINDOW_TWO" Y)" = 0 ] &&
 [ "$(frame_field "$WINDOW_TWO" WIDTH)" = 1024 ] &&
 [ "$(frame_field "$WINDOW_TWO" HEIGHT)" = 768 ] ||
-    fail "Fullscreen no cubrio ambas barras."
+    fail "Fullscreen no cubrio el panel."
 DISPLAY="$NESTED_CLIENT_DISPLAY" xdotool key super+f
 DISPLAY="$NESTED_CLIENT_DISPLAY" xdotool key super+m
 sleep 0.2
@@ -334,21 +335,21 @@ sleep 0.2
 # En otro escritorio no deben quedar tareas del primero.
 DISPLAY="$NESTED_CLIENT_DISPLAY" xdotool key super+2
 sleep 0.2
-click_taskbar 379
+click_taskbar 590
 [ "$(active_window)" = "$WINDOW_ONE" ] &&
     fail "La barra inferior mostro una ventana de otro escritorio."
 start_client "Taskbar Desktop Two" "280x160+200+180" none --min 1x1 --inc 1x1
 WINDOW_THREE=$(wait_for_window "Taskbar Desktop Two")
 wait_for_managed "$WINDOW_THREE"
 wait_for_focus "$WINDOW_THREE"
-click_taskbar 379
+click_taskbar 590
 wait_for_frame_state "$WINDOW_THREE" IsUnMapped
-click_taskbar 379
+click_taskbar 590
 wait_for_frame_state "$WINDOW_THREE" IsViewable
 wait_for_focus "$WINDOW_THREE"
 DISPLAY="$NESTED_CLIENT_DISPLAY" xdotool key super+1
 sleep 0.2
-click_taskbar 379
+click_taskbar 590
 wait_for_focus "$WINDOW_ONE"
 
 # El reinicio recrea la barra sin cerrar clientes ni perder sus acciones.
@@ -361,9 +362,9 @@ while [ "$(grep -c 'iniciado en' "$TEST_TMP/wm.log" || true)" -le "$start_count"
     sleep 0.1
 done
 TASKBAR_WINDOW=$(DISPLAY="$NESTED_CLIENT_DISPLAY" \
-    xdotool search --name '^AntonioWM Taskbar$' 2>/dev/null | head -n 1 || true)
+    xdotool search --name '^AntonioWM Panel$' 2>/dev/null | head -n 1 || true)
 [ -n "$TASKBAR_WINDOW" ] || fail "El reinicio no recreo la barra inferior."
-click_taskbar 582
+click_taskbar 793
 wait_for_focus "$WINDOW_TWO"
 
 # La misma configuracion puede desactivar por completo la barra y su reserva.
@@ -378,10 +379,10 @@ WM_PID=$!
 sleep 0.5
 kill -0 "$WM_PID" 2>/dev/null || fail "AntonioWM no arranco sin taskbar."
 DISABLED_TASKBAR=$(DISPLAY="$NESTED_CLIENT_DISPLAY" \
-    xdotool search --name '^AntonioWM Taskbar$' 2>/dev/null | head -n 1 || true)
+    xdotool search --name '^AntonioWM Panel$' 2>/dev/null | head -n 1 || true)
 [ -z "$DISABLED_TASKBAR" ] || fail "taskbar.enabled=false no oculto la barra."
 DISPLAY="$NESTED_CLIENT_DISPLAY" xprop -root _NET_WORKAREA |
-    grep -q '= 0, 26, 1024, 742' ||
+    grep -q '= 0, 0, 1024, 768' ||
     fail "La taskbar desactivada siguio reservando workarea."
 
 echo "Prueba de configuracion/taskbar superada: PNG, fallback, comandos, foco, escritorios, geometria, minimizar/restaurar, fullscreen, reinicio y desactivacion."

@@ -64,10 +64,10 @@ static size_t managed_visible_count(void)
     Client *client;
     size_t count = 0U;
 
-    if (wm.bar_window != None) {
+    if (wm.taskbar_window != None) {
         ++count;
     }
-    if (wm.taskbar_window != None) {
+    if (menu_is_open() && wm.menu_window != None) {
         ++count;
     }
 
@@ -170,8 +170,9 @@ void stacking_enforce(void)
                 client_layer(client) == layer && count < wanted) {
                 bottom_to_top[count++] = client->frame;
             } else if (layer == 4 &&
-                       (children[index] == wm.bar_window ||
-                        children[index] == wm.taskbar_window) &&
+                       (children[index] == wm.taskbar_window ||
+                        (menu_is_open() &&
+                         children[index] == wm.menu_window)) &&
                        count < wanted) {
                 bottom_to_top[count++] = children[index];
             }

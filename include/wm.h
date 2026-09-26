@@ -14,6 +14,7 @@
 #define AWM_RUNTIME_LABEL_LENGTH 64U
 #define AWM_RUNTIME_COMMAND_LENGTH 512U
 #define AWM_RUNTIME_PATH_LENGTH 1024U
+#define AWM_DESKTOP_ENTRY_COMMAND_LENGTH 4096U
 
 typedef struct {
     char label[AWM_RUNTIME_LABEL_LENGTH];
@@ -24,6 +25,10 @@ typedef struct {
 typedef struct {
     char terminal[AWM_RUNTIME_COMMAND_LENGTH];
     char screenshot_command[AWM_RUNTIME_COMMAND_LENGTH];
+    char system_logout_command[AWM_RUNTIME_COMMAND_LENGTH];
+    char system_switch_user_command[AWM_RUNTIME_COMMAND_LENGTH];
+    char system_reboot_command[AWM_RUNTIME_COMMAND_LENGTH];
+    char system_poweroff_command[AWM_RUNTIME_COMMAND_LENGTH];
     bool taskbar_enabled;
     unsigned int taskbar_height;
     int taskbar_gap;
@@ -33,6 +38,27 @@ typedef struct {
     LauncherConfig launchers[AWM_RUNTIME_MAX_LAUNCHERS];
     char desktop_names[AWM_RUNTIME_MAX_DESKTOPS][AWM_RUNTIME_LABEL_LENGTH];
 } RuntimeConfig;
+
+typedef enum {
+    APPLICATION_CATEGORY_ACCESSORIES = 0,
+    APPLICATION_CATEGORY_DEVELOPMENT,
+    APPLICATION_CATEGORY_GRAPHICS,
+    APPLICATION_CATEGORY_INTERNET,
+    APPLICATION_CATEGORY_MULTIMEDIA,
+    APPLICATION_CATEGORY_OFFICE,
+    APPLICATION_CATEGORY_SYSTEM,
+    APPLICATION_CATEGORY_OTHER,
+    APPLICATION_CATEGORY_COUNT
+} ApplicationCategory;
+
+typedef struct {
+    char *identifier;
+    char *name;
+    char *command;
+    char *icon_path;
+    ApplicationCategory category;
+    bool terminal;
+} ApplicationEntry;
 
 typedef struct {
     unsigned int width;
@@ -264,8 +290,8 @@ typedef struct {
     Client *clients_tail;
     Client *focused;
     Window supporting_window;
-    Window bar_window;
     Window taskbar_window;
+    Window menu_window;
 
     unsigned int desktop_count;
     unsigned int current_desktop;
@@ -340,10 +366,27 @@ void monitor_for_rectangle(int x,
                            int height,
                            Monitor *monitor);
 void monitor_for_client(const Client *client, Monitor *monitor);
+void monitor_primary(Monitor *monitor);
 bool monitor_handle_event(XEvent *event);
 
 /* runtime_config.c */
 void runtime_config_load(void);
+
+/* desktop_entries.c */
+bool desktop_entries_initialize(void);
+bool desktop_entries_load_paths(const char *system_directory,
+                                const char *user_directory);
+void desktop_entries_cleanup(void);
+size_t desktop_entries_count(void);
+const ApplicationEntry *desktop_entries_get(size_t index);
+size_t desktop_entries_category_count(ApplicationCategory category);
+const ApplicationEntry *desktop_entries_category_get(ApplicationCategory category,
+                                                     size_t index);
+const char *desktop_entries_category_name(ApplicationCategory category);
+bool desktop_entry_launch_command(const ApplicationEntry *entry,
+                                  const char *terminal,
+                                  char *output,
+                                  size_t capacity);
 
 /* icon.c */
 bool icon_load_png(const char *path, IconImage *image);
@@ -489,16 +532,11 @@ int decor_client_root_y(const Client *client);
 int decor_border_width(const Client *client);
 int decor_title_height(const Client *client);
 
-/* bar.c */
-bool bar_initialize(void);
-void bar_cleanup(void);
-void bar_update(void);
-void bar_reconfigure(void);
-void bar_raise(void);
-bool bar_handle_button_press(const XButtonEvent *event);
-void bar_handle_expose(const XExposeEvent *event);
-int bar_next_timeout_ms(void);
-void bar_tick(void);
+/* clock.c */
+void clock_initialize(void);
+const char *clock_text(void);
+int clock_next_timeout_ms(void);
+void clock_tick(void);
 
 /* taskbar.c */
 bool taskbar_initialize(void);
@@ -512,6 +550,20 @@ bool taskbar_handle_motion(const XMotionEvent *event);
 bool taskbar_handle_enter(const XCrossingEvent *event);
 bool taskbar_handle_leave(const XCrossingEvent *event);
 void taskbar_handle_expose(const XExposeEvent *event);
+
+/* menu.c */
+bool menu_initialize(void);
+void menu_cleanup(void);
+void menu_toggle(Time time);
+void menu_close(void);
+void menu_reconfigure(void);
+void menu_raise(void);
+bool menu_is_open(void);
+bool menu_handle_button_press(const XButtonEvent *event);
+bool menu_handle_button_release(const XButtonEvent *event);
+bool menu_handle_motion(const XMotionEvent *event);
+bool menu_handle_keypress(XKeyEvent *event);
+void menu_handle_expose(const XExposeEvent *event);
 
 /* ewmh.c */
 void ewmh_initialize(void);
@@ -532,7 +584,6 @@ void ewmh_get_workarea(unsigned int desktop, WorkArea *area);
 void ewmh_get_monitor_workarea(unsigned int desktop,
                                const Monitor *monitor,
                                WorkArea *area);
-void ewmh_get_bar_geometry(int *x, int *y, int *width, int *height);
 void ewmh_get_taskbar_geometry(int *x, int *y, int *width, int *height);
 bool ewmh_handle_client_message(const XClientMessageEvent *event);
 

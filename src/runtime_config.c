@@ -53,6 +53,26 @@ static void load_defaults(void)
                     AWM_SCREENSHOT_COMMAND,
                     "screenshot.command",
                     0U);
+    (void)copy_text(wm.config.system_logout_command,
+                    sizeof(wm.config.system_logout_command),
+                    AWM_SYSTEM_LOGOUT_COMMAND,
+                    "system.logout.command",
+                    0U);
+    (void)copy_text(wm.config.system_switch_user_command,
+                    sizeof(wm.config.system_switch_user_command),
+                    AWM_SYSTEM_SWITCH_USER_COMMAND,
+                    "system.switch_user.command",
+                    0U);
+    (void)copy_text(wm.config.system_reboot_command,
+                    sizeof(wm.config.system_reboot_command),
+                    AWM_SYSTEM_REBOOT_COMMAND,
+                    "system.reboot.command",
+                    0U);
+    (void)copy_text(wm.config.system_poweroff_command,
+                    sizeof(wm.config.system_poweroff_command),
+                    AWM_SYSTEM_POWEROFF_COMMAND,
+                    "system.poweroff.command",
+                    0U);
     wm.config.taskbar_enabled = AWM_TASKBAR_ENABLED != 0;
     wm.config.taskbar_height = AWM_TASKBAR_HEIGHT;
     wm.config.taskbar_gap = AWM_TASKBAR_GAP;
@@ -348,6 +368,30 @@ static void apply_value(const char *key,
     } else if (strcmp(key, "screenshot.command") == 0) {
         (void)copy_text(wm.config.screenshot_command,
                         sizeof(wm.config.screenshot_command),
+                        value,
+                        key,
+                        line_number);
+    } else if (strcmp(key, "system.logout.command") == 0) {
+        (void)copy_text(wm.config.system_logout_command,
+                        sizeof(wm.config.system_logout_command),
+                        value,
+                        key,
+                        line_number);
+    } else if (strcmp(key, "system.switch_user.command") == 0) {
+        (void)copy_text(wm.config.system_switch_user_command,
+                        sizeof(wm.config.system_switch_user_command),
+                        value,
+                        key,
+                        line_number);
+    } else if (strcmp(key, "system.reboot.command") == 0) {
+        (void)copy_text(wm.config.system_reboot_command,
+                        sizeof(wm.config.system_reboot_command),
+                        value,
+                        key,
+                        line_number);
+    } else if (strcmp(key, "system.poweroff.command") == 0) {
+        (void)copy_text(wm.config.system_poweroff_command,
+                        sizeof(wm.config.system_poweroff_command),
                         value,
                         key,
                         line_number);

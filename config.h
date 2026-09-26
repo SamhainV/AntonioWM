@@ -10,13 +10,17 @@
  */
 
 #define AWM_NAME "AntonioWM"
-#define AWM_VERSION "0.4.10-screenshot"
+#define AWM_VERSION "0.4.11-panel-menu"
 
 /* Commands */
 /* Command line; ANTONIOWM_TERMINAL can override it at runtime. */
 #define AWM_TERMINAL "xterm"
 #define AWM_SCREENSHOT_COMMAND \
     "maim | xclip -selection clipboard -t image/png -i"
+#define AWM_SYSTEM_LOGOUT_COMMAND ""
+#define AWM_SYSTEM_SWITCH_USER_COMMAND ""
+#define AWM_SYSTEM_REBOOT_COMMAND "systemctl reboot"
+#define AWM_SYSTEM_POWEROFF_COMMAND "systemctl poweroff"
 
 /* Optional classic bottom bar and launcher defaults (icon empty = text). */
 #define AWM_TASKBAR_ENABLED 1
@@ -54,7 +58,6 @@
 /* Compact, classic decorations.  All dimensions are in pixels. */
 #define AWM_BORDER_WIDTH 2U
 #define AWM_TITLE_HEIGHT 22U
-#define AWM_BAR_HEIGHT 26U
 #define AWM_BUTTON_SIZE 16U
 #define AWM_ELEMENT_GAP 4
 #define AWM_TITLE_TEXT_PADDING 8
@@ -87,12 +90,15 @@
 #define AWM_FONT_FALLBACK "fixed"
 #define AWM_CLOCK_FORMAT "%H:%M"
 
-/* Bar sections remain predictable and clickable on small screens. */
-#define AWM_BAR_BRAND_WIDTH 96
-#define AWM_BAR_DESKTOP_WIDTH 26
-#define AWM_BAR_ACTIVE_TITLE_WIDTH 210
-#define AWM_BAR_CLOCK_WIDTH 60
-#define AWM_BAR_WINDOW_MAX_WIDTH 180
+/* Unified bottom panel and native menu dimensions. */
+#define AWM_PANEL_MENU_WIDTH 92
+#define AWM_PANEL_DESKTOP_WIDTH 26
+#define AWM_PANEL_CLOCK_WIDTH 60
+#define AWM_MENU_WIDTH 250
+#define AWM_MENU_APPLICATION_WIDTH 310
+#define AWM_MENU_ROW_HEIGHT 24
+#define AWM_MENU_SEPARATOR_HEIGHT 8
+#define AWM_MENU_BORDER_WIDTH 1
 #define AWM_DESKTOP_COUNT 4U
 #define AWM_DESKTOP_NAMES { "1", "2", "3", "4" }
 

@@ -103,6 +103,7 @@ void desktop_place_client(Client *client,
     int maximum_y;
     int diagonal_limit;
     int step = AWM_CASCADE_STEP > 0 ? AWM_CASCADE_STEP : 1;
+    Monitor monitor;
     WorkArea area;
 
     if (!map_requested || position_is_explicit(client, attributes) ||
@@ -114,7 +115,8 @@ void desktop_place_client(Client *client,
         return;
     }
 
-    ewmh_get_workarea(client->desktop, &area);
+    monitor_primary(&monitor);
+    ewmh_get_monitor_workarea(client->desktop, &monitor, &area);
     outer_width = decor_outer_width(client);
     outer_height = decor_outer_height(client);
     start_y = area.y + AWM_CASCADE_MARGIN;
@@ -183,7 +185,7 @@ void desktop_switch(unsigned int desktop)
     client_focus(candidate, true);
     ewmh_update_client_list();
     stacking_enforce();
-    bar_update();
+    taskbar_update();
 }
 
 static void move_client_group(Client *client, unsigned int desktop)
@@ -228,7 +230,7 @@ void desktop_move_client(Client *client, unsigned int desktop)
     ewmh_update_client_list();
     ewmh_recalculate_workarea();
     stacking_enforce();
-    bar_update();
+    taskbar_update();
 }
 
 void desktop_reapply_screen_states(void)

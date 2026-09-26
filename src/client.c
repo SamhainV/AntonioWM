@@ -347,7 +347,7 @@ void client_update_title(Client *client)
     free(client->title);
     client->title = new_title;
     decor_redraw(client);
-    bar_update();
+    taskbar_update();
 }
 
 void client_send_configure(Client *client)
@@ -441,13 +441,15 @@ void client_manage(Window window, bool map_requested)
 
     desktop_place_client(client, &attributes, map_requested);
     if (transient_parent != NULL && !client->position_explicit && map_requested) {
+        Monitor monitor;
         WorkArea area;
         int parent_width = decor_outer_width(transient_parent);
         int parent_height = decor_outer_height(transient_parent);
         int outer_width = decor_outer_width(client);
         int outer_height = decor_outer_height(client);
 
-        ewmh_get_workarea(client->desktop, &area);
+        monitor_for_client(transient_parent, &monitor);
+        ewmh_get_monitor_workarea(client->desktop, &monitor, &area);
         client->x = transient_parent->x + (parent_width - outer_width) / 2;
         client->y = transient_parent->y + (parent_height - outer_height) / 2;
         if (client->x < area.x) {
@@ -509,7 +511,7 @@ void client_manage(Window window, bool map_requested)
             unmap_iconified_client(client);
         }
         decor_redraw(client);
-        bar_update();
+        taskbar_update();
     }
 }
 
@@ -559,7 +561,7 @@ void client_focus(Client *client, bool raise)
                        RevertToPointerRoot,
                        wm.last_event_time);
         ewmh_update_active_window();
-        bar_update();
+        taskbar_update();
         stacking_enforce();
         return;
     }
@@ -595,7 +597,7 @@ void client_focus(Client *client, bool raise)
 
     desktop_remember_focus(client);
     ewmh_update_active_window();
-    bar_update();
+    taskbar_update();
     stacking_enforce();
 }
 
@@ -616,7 +618,7 @@ void client_note_focus(Client *client)
     }
     desktop_remember_focus(client);
     ewmh_update_active_window();
-    bar_update();
+    taskbar_update();
     stacking_enforce();
 }
 
@@ -714,7 +716,7 @@ void client_unmanage(Client *client, bool destroyed)
     if (was_focused) {
         client_focus(replacement, true);
     } else {
-        bar_update();
+        taskbar_update();
     }
 }
 
@@ -774,7 +776,7 @@ void client_set_visible(Client *client, bool visible)
         }
     }
     stacking_enforce();
-    bar_update();
+    taskbar_update();
 }
 
 static void set_client_geometry(Client *client,
@@ -866,7 +868,7 @@ void client_set_maximized(Client *client, bool maximized)
 
     ewmh_update_client_state(client);
     decor_redraw(client);
-    bar_update();
+    taskbar_update();
     if (client->visible) {
         client_focus(client, true);
     }
@@ -910,7 +912,7 @@ void client_set_fullscreen(Client *client, bool fullscreen)
     ewmh_update_client_state(client);
     ewmh_set_frame_extents(client);
     decor_redraw(client);
-    bar_update();
+    taskbar_update();
     if (client->visible) {
         client_focus(client, true);
     }
@@ -956,7 +958,7 @@ void client_set_minimized(Client *client, bool minimized)
         }
     }
 
-    bar_update();
+    taskbar_update();
 }
 
 void client_minimize(Client *client)
@@ -1071,7 +1073,7 @@ void client_refresh_decor(Client *client)
     ewmh_recalculate_workarea();
     client_reconsider_focus(client);
     stacking_enforce();
-    bar_update();
+    taskbar_update();
 }
 
 void client_reconsider_focus(Client *client)

@@ -236,11 +236,11 @@ click_bar_client()
         fail "No se encontro el cliente $target_client en la barra."
     fi
 
-    slot_available=530
+    slot_available=408
     slot_width=$(((slot_available - (visible_count - 1) * 4) / visible_count))
-    [ "$slot_width" -le 180 ] || slot_width=180
-    slot_x=$((220 + target_index * (slot_width + 4) + slot_width / 2))
-    [ "$slot_x" -lt 750 ] || slot_x=749
+    [ "$slot_width" -le 200 ] || slot_width=200
+    slot_x=$((548 + target_index * (slot_width + 4) + slot_width / 2))
+    [ "$slot_x" -lt 956 ] || slot_x=955
     click_bar "$slot_x"
 }
 
@@ -303,8 +303,8 @@ printf '%s\n' "$ROOT_PROPERTIES" |
     grep -q '_NET_CURRENT_DESKTOP(CARDINAL) = 0' ||
     fail "AntonioWM no inicio en el primer escritorio."
 printf '%s\n' "$ROOT_PROPERTIES" |
-    grep -q '_NET_WORKAREA(CARDINAL) = 0, 26, 1024, 714' ||
-    fail "_NET_WORKAREA no reserva las barras superior e inferior."
+    grep -q '_NET_WORKAREA(CARDINAL) = 0, 0, 1024, 740' ||
+    fail "_NET_WORKAREA no comienza en y=0 o no reserva el panel."
 for atom in _NET_ACTIVE_WINDOW _NET_CLIENT_LIST _NET_CLIENT_LIST_STACKING \
             _NET_CURRENT_DESKTOP _NET_NUMBER_OF_DESKTOPS _NET_WORKAREA \
             _NET_FRAME_EXTENTS _NET_REQUEST_FRAME_EXTENTS \
@@ -322,28 +322,22 @@ SUPPORTING_WINDOW=$(printf '%s\n' "$ROOT_PROPERTIES" |
 DISPLAY="$NESTED_CLIENT_DISPLAY" xprop -id "$SUPPORTING_WINDOW" _NET_WM_NAME |
     grep -q AntonioWM || fail "La ventana EWMH no identifica a AntonioWM."
 
-BAR_WINDOW=$(DISPLAY="$NESTED_CLIENT_DISPLAY" \
+OLD_BAR=$(DISPLAY="$NESTED_CLIENT_DISPLAY" \
     xdotool search --name '^AntonioWM Bar$' 2>/dev/null | head -n 1 || true)
-if [ -z "$BAR_WINDOW" ] || [ "$(window_field "$BAR_WINDOW" X)" != 0 ] ||
-   [ "$(window_field "$BAR_WINDOW" Y)" != 0 ] ||
+[ -z "$OLD_BAR" ] || fail "La barra superior antigua sigue presente."
+BAR_WINDOW=$(DISPLAY="$NESTED_CLIENT_DISPLAY" \
+    xdotool search --name '^AntonioWM Panel$' 2>/dev/null | head -n 1 || true)
+if [ -z "$BAR_WINDOW" ] ||
+   [ "$(window_field "$BAR_WINDOW" X)" != 0 ] ||
+   [ "$(window_field "$BAR_WINDOW" Y)" != 740 ] ||
    [ "$(window_field "$BAR_WINDOW" WIDTH)" != 1024 ] ||
-   [ "$(window_field "$BAR_WINDOW" HEIGHT)" != 26 ] ||
+   [ "$(window_field "$BAR_WINDOW" HEIGHT)" != 28 ] ||
    [ "$(map_state "$BAR_WINDOW")" != IsViewable ]; then
-    fail "La barra no ocupa 1024x26+0+0."
+    fail "El panel unico no ocupa 1024x28+0+740."
 fi
-TASKBAR_WINDOW=$(DISPLAY="$NESTED_CLIENT_DISPLAY" \
-    xdotool search --name '^AntonioWM Taskbar$' 2>/dev/null | head -n 1 || true)
-if [ -z "$TASKBAR_WINDOW" ] ||
-   [ "$(window_field "$TASKBAR_WINDOW" X)" != 0 ] ||
-   [ "$(window_field "$TASKBAR_WINDOW" Y)" != 740 ] ||
-   [ "$(window_field "$TASKBAR_WINDOW" WIDTH)" != 1024 ] ||
-   [ "$(window_field "$TASKBAR_WINDOW" HEIGHT)" != 28 ] ||
-   [ "$(map_state "$TASKBAR_WINDOW")" != IsViewable ]; then
-    fail "La barra inferior no ocupa 1024x28+0+740."
-fi
-click_bar 149
+click_bar 143
 wait_for_desktop 1
-click_bar 119
+click_bar 113
 wait_for_desktop 0
 
 set +e
@@ -465,10 +459,18 @@ sleep 0.15
 FRAME_ONE=$(frame_of "$WINDOW_ONE")
 BORDER_OLD_WIDTH=$(window_field "$FRAME_ONE" WIDTH)
 BORDER_OLD_HEIGHT=$(window_field "$FRAME_ONE" HEIGHT)
+BOTTOM_RIGHT_HANDLE=$(child_named "$FRAME_ONE" "AntonioWM Resize Bottom Right")
+[ -n "$BOTTOM_RIGHT_HANDLE" ] ||
+    fail "No se encontro la zona inferior derecha de resize."
 DISPLAY="$NESTED_CLIENT_DISPLAY" xdotool \
-    mousemove --window "$FRAME_ONE" $((BORDER_OLD_WIDTH - 1)) \
-    $((BORDER_OLD_HEIGHT - 1)) mousedown 1 \
-    mousemove_relative --sync 40 30 mouseup 1
+    mousemove --sync --window "$BOTTOM_RIGHT_HANDLE" 3 3
+sleep 0.08
+DISPLAY="$NESTED_CLIENT_DISPLAY" xdotool mousedown 1
+sleep 0.12
+DISPLAY="$NESTED_CLIENT_DISPLAY" xdotool \
+    mousemove_relative --sync -- 40 30
+sleep 0.12
+DISPLAY="$NESTED_CLIENT_DISPLAY" xdotool mouseup 1
 sleep 0.15
 if [ "$(frame_field "$WINDOW_ONE" WIDTH)" -le "$BORDER_OLD_WIDTH" ] ||
    [ "$(frame_field "$WINDOW_ONE" HEIGHT)" -le "$BORDER_OLD_HEIGHT" ]; then
@@ -497,9 +499,9 @@ while :; do
     if state_has "$WINDOW_TWO" _NET_WM_STATE_MAXIMIZED_VERT &&
        state_has "$WINDOW_TWO" _NET_WM_STATE_MAXIMIZED_HORZ &&
        [ "$(frame_field "$WINDOW_TWO" X)" = 0 ] &&
-       [ "$(frame_field "$WINDOW_TWO" Y)" = 26 ] &&
+       [ "$(frame_field "$WINDOW_TWO" Y)" = 0 ] &&
        [ "$(frame_field "$WINDOW_TWO" WIDTH)" = 1024 ] &&
-       [ "$(frame_field "$WINDOW_TWO" HEIGHT)" = 714 ]; then
+       [ "$(frame_field "$WINDOW_TWO" HEIGHT)" = 740 ]; then
         break
     fi
     attempt=$((attempt + 1))
@@ -507,7 +509,7 @@ while :; do
     sleep 0.1
 done
 if [ "$(xwin_field "$WINDOW_TWO" Width)" != 1020 ] ||
-   [ "$(xwin_field "$WINDOW_TWO" Height)" != 688 ]; then
+   [ "$(xwin_field "$WINDOW_TWO" Height)" != 714 ]; then
     fail "El contenido maximizado tiene geometria incorrecta."
 fi
 DISPLAY="$NESTED_CLIENT_DISPLAY" xdotool key super+m
@@ -522,7 +524,7 @@ fi
 click_frame_button "$WINDOW_TWO" maximize
 sleep 0.2
 if ! state_has "$WINDOW_TWO" _NET_WM_STATE_MAXIMIZED_HORZ ||
-   [ "$(frame_field "$WINDOW_TWO" Y)" != 26 ]; then
+   [ "$(frame_field "$WINDOW_TWO" Y)" != 0 ]; then
     fail "El boton maximizar no uso la logica de Super+M."
 fi
 click_frame_button "$WINDOW_TWO" maximize
@@ -636,8 +638,8 @@ AUTO_TWO_Y=$(frame_field "$WINDOW_AUTO_TWO" Y)
 if [ "$AUTO_ONE_X" = "$AUTO_TWO_X" ] && [ "$AUTO_ONE_Y" = "$AUTO_TWO_Y" ]; then
     fail "La cascada superpuso exactamente las ventanas."
 fi
-if [ "$AUTO_ONE_Y" -lt 26 ] || [ "$AUTO_TWO_Y" -lt 26 ]; then
-    fail "La cascada invadio la barra."
+if [ "$AUTO_ONE_Y" -lt 0 ] || [ "$AUTO_TWO_Y" -lt 0 ]; then
+    fail "La cascada salio por la parte superior del monitor."
 fi
 
 DISPLAY="$NESTED_CLIENT_DISPLAY" timeout 3 xdotool \
@@ -646,10 +648,10 @@ click_bar_client "$WINDOW_ONE"
 sleep 0.15
 [ "$(DISPLAY="$NESTED_CLIENT_DISPLAY" xdotool getwindowfocus)" = "$WINDOW_ONE" ] ||
     fail "La lista de la barra no enfoco W1."
-click_bar 149
+click_bar 143
 wait_for_desktop 1
 wait_for_frame_state "$WINDOW_ONE" IsUnMapped
-click_bar 119
+click_bar 113
 wait_for_desktop 0
 wait_for_frame_state "$WINDOW_ONE" IsViewable
 
@@ -802,9 +804,9 @@ DISPLAY="$NESTED_CLIENT_DISPLAY" xdotool key super+2
 wait_for_desktop 1
 wait_for_frame_state "$WINDOW_ONE" IsViewable
 if [ "$(frame_field "$WINDOW_ONE" X)" != 0 ] ||
-   [ "$(frame_field "$WINDOW_ONE" Y)" != 26 ] ||
+   [ "$(frame_field "$WINDOW_ONE" Y)" != 0 ] ||
    [ "$(frame_field "$WINDOW_ONE" WIDTH)" != 1024 ] ||
-   [ "$(frame_field "$WINDOW_ONE" HEIGHT)" != 714 ]; then
+   [ "$(frame_field "$WINDOW_ONE" HEIGHT)" != 740 ]; then
     fail "El maximizado no sobrevivio al reinicio."
 fi
 DISPLAY="$NESTED_CLIENT_DISPLAY" xdotool key super+m

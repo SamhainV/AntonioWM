@@ -109,7 +109,7 @@ static void handle_property_notify(const XPropertyEvent *event)
         hints_refresh_focus_model(client);
         hints_refresh_urgency(client);
         client_reconsider_focus(client);
-        bar_update();
+        taskbar_update();
     } else if (client != NULL && event->atom == wm.atoms.wm_protocols) {
         hints_refresh_focus_model(client);
         client_reconsider_focus(client);
@@ -181,7 +181,8 @@ static void refresh_screen_layout(bool refresh_monitors)
     }
     ewmh_recalculate_workarea();
     stacking_enforce();
-    bar_update();
+    taskbar_update();
+    menu_reconfigure();
 }
 
 static void handle_configure_notify(const XConfigureEvent *event)
@@ -250,23 +251,27 @@ void events_dispatch(XEvent *event)
         handle_unmap_notify(&event->xunmap);
         break;
     case ButtonPress:
-        if (!taskbar_handle_button_press(&event->xbutton) &&
-            !bar_handle_button_press(&event->xbutton)) {
+        if (!menu_handle_button_press(&event->xbutton) &&
+            !taskbar_handle_button_press(&event->xbutton)) {
             mouse_handle_button_press(&event->xbutton);
         }
         break;
     case ButtonRelease:
-        if (!taskbar_handle_button_release(&event->xbutton)) {
+        if (!menu_handle_button_release(&event->xbutton) &&
+            !taskbar_handle_button_release(&event->xbutton)) {
             mouse_handle_button_release(&event->xbutton);
         }
         break;
     case MotionNotify:
-        if (!taskbar_handle_motion(&event->xmotion)) {
+        if (!menu_handle_motion(&event->xmotion) &&
+            !taskbar_handle_motion(&event->xmotion)) {
             mouse_handle_motion(&event->xmotion);
         }
         break;
     case KeyPress:
-        keyboard_handle_keypress(&event->xkey);
+        if (!menu_handle_keypress(&event->xkey)) {
+            keyboard_handle_keypress(&event->xkey);
+        }
         break;
     case EnterNotify:
         handle_enter_notify(&event->xcrossing);
@@ -287,7 +292,7 @@ void events_dispatch(XEvent *event)
         handle_focus_in(&event->xfocus);
         break;
     case Expose:
-        bar_handle_expose(&event->xexpose);
+        menu_handle_expose(&event->xexpose);
         taskbar_handle_expose(&event->xexpose);
         decor_handle_expose(&event->xexpose);
         break;

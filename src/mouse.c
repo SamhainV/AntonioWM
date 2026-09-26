@@ -272,34 +272,32 @@ void mouse_handle_button_release(XButtonEvent *event)
     wm.drag.pointer_grabbed = false;
 }
 
-static int constrained_x(const Client *client, int x, int width)
+static void constrain_position(const Client *client,
+                               int *x,
+                               int *y,
+                               int width,
+                               int height)
 {
+    Monitor monitor;
     WorkArea area;
 
-    ewmh_get_workarea(client->sticky ? wm.current_desktop : client->desktop,
-                      &area);
-    if (x > area.x + area.width - AWM_MIN_VISIBLE_PIXELS) {
-        x = area.x + area.width - AWM_MIN_VISIBLE_PIXELS;
+    monitor_for_rectangle(*x, *y, width, height, &monitor);
+    ewmh_get_monitor_workarea(
+        client->sticky ? wm.current_desktop : client->desktop,
+        &monitor,
+        &area);
+    if (*x > area.x + area.width - AWM_MIN_VISIBLE_PIXELS) {
+        *x = area.x + area.width - AWM_MIN_VISIBLE_PIXELS;
     }
-    if (x + width < area.x + AWM_MIN_VISIBLE_PIXELS) {
-        x = area.x + AWM_MIN_VISIBLE_PIXELS - width;
+    if (*x + width < area.x + AWM_MIN_VISIBLE_PIXELS) {
+        *x = area.x + AWM_MIN_VISIBLE_PIXELS - width;
     }
-    return x;
-}
-
-static int constrained_y(const Client *client, int y, int height)
-{
-    WorkArea area;
-
-    ewmh_get_workarea(client->sticky ? wm.current_desktop : client->desktop,
-                      &area);
-    if (y > area.y + area.height - AWM_MIN_VISIBLE_PIXELS) {
-        y = area.y + area.height - AWM_MIN_VISIBLE_PIXELS;
+    if (*y > area.y + area.height - AWM_MIN_VISIBLE_PIXELS) {
+        *y = area.y + area.height - AWM_MIN_VISIBLE_PIXELS;
     }
-    if (y + height < area.y + AWM_MIN_VISIBLE_PIXELS) {
-        y = area.y + AWM_MIN_VISIBLE_PIXELS - height;
+    if (*y + height < area.y + AWM_MIN_VISIBLE_PIXELS) {
+        *y = area.y + AWM_MIN_VISIBLE_PIXELS - height;
     }
-    return y;
 }
 
 void mouse_handle_motion(XMotionEvent *event)
@@ -323,12 +321,14 @@ void mouse_handle_motion(XMotionEvent *event)
     delta_y = current.y_root - wm.drag.pointer_y;
 
     if (wm.drag.mode == DRAG_MOVE) {
-        int x = constrained_x(client,
-                              wm.drag.window_x + delta_x,
-                              decor_outer_width(client));
-        int y = constrained_y(client,
-                              wm.drag.window_y + delta_y,
-                              decor_outer_height(client));
+        int x = wm.drag.window_x + delta_x;
+        int y = wm.drag.window_y + delta_y;
+
+        constrain_position(client,
+                           &x,
+                           &y,
+                           decor_outer_width(client),
+                           decor_outer_height(client));
 
         decor_move(client, x, y);
         return;

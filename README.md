@@ -1,10 +1,10 @@
-# AntonioWM 0.4.10 — captura PNG al portapapeles
+# AntonioWM 0.4.11 — panel unificado y menú de aplicaciones
 
 AntonioWM es un gestor de ventanas flotante para X11, escrito desde cero en C
-con Xlib. La versión 0.4.10 conserva íntegramente la compatibilidad
-ICCCM/EWMH, la interfaz y el soporte multimonitor de 0.4.9, y añade una captura
-global, silenciosa y asíncrona del escritorio al portapapeles X11 en formato
-PNG.
+con Xlib. La versión 0.4.11 conserva la compatibilidad ICCCM/EWMH, el soporte
+multimonitor y la captura silenciosa de 0.4.10, elimina la antigua barra
+superior y reúne escritorios, lanzadores, tareas, menú y reloj en un único
+panel inferior.
 
 El proyecto sigue priorizando código directo y comprensible. No usa un toolkit
 gráfico, un compositor ni código procedente de otros gestores de ventanas.
@@ -26,29 +26,32 @@ gráfico, un compositor ni código procedente de otros gestores de ventanas.
   familias de ventanas entre escritorios.
 - Colocación en cascada para ventanas que no indican una posición explícita.
 - Maximización limitada al monitor que contiene la mayor parte de la ventana,
-  respetando su workarea, ambas barras y restaurando la geometría exacta.
-- Fullscreen EWMH limitado al monitor actual, cubriendo sus barras y sin
-  frame.
+  desde `y=0` hasta el panel inferior de ese monitor y restaurando la
+  geometría exacta.
+- Fullscreen EWMH limitado al monitor actual, cubriendo el panel y sin frame.
 - Minimización ICCCM/EWMH mediante `IconicState` y
   `_NET_WM_STATE_HIDDEN`, con restauración desde la barra.
 - Reinicio en caliente sin cerrar aplicaciones ni perder sus estados.
-- Barra superior integrada con escritorios, lista de ventanas, urgencia,
-  ventana activa y reloj `HH:MM` sin sondeo intensivo.
-- Barra inferior integrada con lanzadores configurables —icono PNG o texto— y
-  botones para las ventanas del escritorio visible.
+- Panel inferior unificado con botón principal, escritorios, lanzadores
+  configurables —icono PNG o texto—, tareas del escritorio visible y reloj
+  `HH:MM` sin sondeo intensivo.
+- Menú propio Xlib/Xft con catálogo de aplicaciones instalado, categorías,
+  navegación por ratón/teclado y acciones configurables de sesión/sistema.
 - `Ctrl + Mayús + Impr Pant` ejecuta una captura completa y la ofrece como
   `image/png` en `CLIPBOARD`, sin abrir ventanas ni bloquear el bucle X11.
 
 Las ventanas minimizadas se excluyen deliberadamente de `Alt + Tab`: siguen
-visibles en las listas de ambas barras, desde donde se restauran
-explícitamente.
+visibles en el panel, desde donde se restauran explícitamente.
 
-## Barra inferior 0.4.8
+## Panel inferior unificado 0.4.11
 
-- Ocupa todo el ancho disponible y reserva 28 px por defecto junto con la
-  barra superior y los struts de docks externos. Las ventanas maximizadas
-  respetan ese espacio; el fullscreen real usa la pantalla completa y queda
-  por encima de las barras.
+- Es el único panel de AntonioWM. De izquierda a derecha contiene el botón
+  `AntonioWM`, los escritorios 1–4, los lanzadores configurados, las tareas,
+  una zona flexible y el reloj alineado a la derecha.
+- Ocupa el ancho disponible del monitor primario y reserva 28 px por defecto,
+  combinados con los struts de docks externos. Las ventanas maximizadas
+  empiezan en `y=0` y terminan justo encima; el fullscreen cubre el monitor y
+  el panel.
 - Incluye de fábrica los lanzadores `Chrome`, `Terminal`, `Archivos` y `GIMP`,
   que ejecutan respectivamente `google-chrome`, `xterm`, `pcmanfm` y `gimp`.
   Se muestran como texto hasta que se configure un icono PNG para cada uno.
@@ -63,7 +66,7 @@ explícitamente.
   docks y demás ventanas especiales no crean botones.
 - Una tarea activa, minimizada o urgente tiene un estado visual distinto. Los
   botones usan hover y pulsado, la misma fuente Xft y la misma paleta que la
-  barra superior, y truncan títulos largos mediante elipsis.
+  decoración, y truncan títulos largos mediante elipsis.
 - Un clic enfoca y eleva una ventana, restaura una minimizada o minimiza la
   tarea que ya estaba activa. Al cambiar de escritorio la lista se reconstruye
   inmediatamente.
@@ -72,13 +75,24 @@ explícitamente.
 altura, separación, márgenes, lanzadores, etiquetas, comandos e iconos también
 pueden cambiarse sin recompilar mediante el archivo descrito más abajo.
 
+El botón principal abre un menú dibujado por AntonioWM, sin GTK/Qt ni procesos
+auxiliares. `Aplicaciones` presenta vistas por categorías; `Terminal` y
+`Archivos` reutilizan la configuración existente. `Cerrar sesión` termina el
+WM por su ruta limpia si no se configura otro comando. `Cambiar de usuario`
+usa el comando configurado o `gdmflexiserver` cuando está disponible.
+`Reiniciar` y `Apagar` siempre pasan por una confirmación interna.
+
+El menú se cierra al elegir una acción, con `Escape` o al pulsar fuera. Admite
+flechas, `Inicio`, `Fin`, `Enter`, espacio, rueda y ratón. Si el contenido no
+cabe sobre el panel, permanece dentro del monitor y permite desplazamiento.
+
 ## Pulido visual 0.4.5
 
-- Texto de títulos y barra dibujado con Xft, antialiasing y hinting. Si la
+- Texto de títulos y panel dibujado con Xft, antialiasing y hinting. Si la
   familia configurada no existe se intenta `sans`; si Xft no puede abrir una
   fuente, queda disponible el respaldo X11 `fixed`.
-- Barra de título de 22 px y barra superior de 26 px por defecto, con texto
-  centrado verticalmente y márgenes coherentes.
+- Barra de título de 22 px por defecto, con texto centrado verticalmente y
+  márgenes coherentes.
 - Tres botones uniformes de 16 × 16 px dibujados sólo con primitivas X11, sin
   imágenes externas. Tienen estados normal, hover y pulsado; la acción se
   ejecuta al soltar el botón dentro del control.
@@ -88,8 +102,7 @@ pueden cambiarse sin recompilar mediante el archivo descrito más abajo.
 - Paleta oscura y poco saturada con colores independientes para bordes,
   títulos, botones, barra, selección, minimización y urgencia.
 - Entradas de ventana separadas y con anchura máxima; los títulos demasiado
-  largos se acortan con elipsis sin invadir la sección de ventana activa ni el
-  reloj alineado a la derecha.
+  largos se acortan con elipsis sin invadir el reloj alineado a la derecha.
 
 No se ha cambiado la semántica de foco, reparenting, geometría, estados,
 escritorios, transients, stacking ni mensajes ICCCM/EWMH de la versión 0.4.0.
@@ -175,7 +188,7 @@ Se atienden `_NET_CLOSE_WINDOW`, `_NET_MOVERESIZE_WINDOW`,
 `_NET_WM_MOVERESIZE`, `_NET_RESTACK_WINDOW`, `_NET_CURRENT_DESKTOP`,
 `_NET_WM_DESKTOP`, `_NET_ACTIVE_WINDOW`, `_NET_WM_STATE` y
 `_NET_REQUEST_FRAME_EXTENTS`. `_NET_WM_STRUT` y `_NET_WM_STRUT_PARTIAL`
-permiten que docks externos reserven pantalla; la barra propia se desplaza y
+permiten que docks externos reserven pantalla; el panel propio se desplaza y
 el área maximizada combina ambos espacios reservados.
 
 ## Compatibilidad GIMP 3 y RandR
@@ -199,8 +212,10 @@ mantuvo un monitor GDK válido, fue reparentado, recibió foco y cerró con
   si no existe intersección se usa el que contiene su centro y finalmente el
   monitor más cercano.
 - El workarea se calcula por monitor, combinando `_NET_WM_STRUT_PARTIAL`,
-  `_NET_WM_STRUT` y las barras superior e inferior de AntonioWM que realmente
-  intersectan ese monitor.
+  `_NET_WM_STRUT` y el panel inferior cuando realmente intersecta ese monitor.
+- AntonioWM mantiene un panel en el monitor primario. Los demás monitores no
+  pierden altura por ese panel y sus ventanas maximizadas pueden llegar hasta
+  su borde inferior.
 - Maximizar y fullscreen permanecen dentro del monitor seleccionado. Mover una
   ventana a otro monitor antes de maximizar cambia correctamente el destino;
   restaurar recupera exactamente posición y tamaño anteriores.
@@ -210,6 +225,10 @@ mantuvo un monitor GDK válido, fue reparentado, recibió foco y cerró con
   borde izquierdo, derecho, inferior y ambas esquinas inferiores. Cada zona
   muestra sólo su cursor direccional; el borde visible continúa midiendo 2 px
   y el área cliente restante conserva el cursor de la aplicación.
+
+Las propiedades `CARDINAL` de struts se normalizan explícitamente a los
+32 bits del protocolo X11. Así, rangos parciales con extremo `0xffffffff` se
+aplican igual en el workarea global y en el cálculo independiente por monitor.
 
 ## Captura al portapapeles 0.4.10
 
@@ -229,6 +248,27 @@ El grab incluye las variantes de CapsLock y NumLock usadas por los demás
 atajos globales. Si falta `maim`, `xclip` o ambos, sólo falla ese comando; el
 gestor sigue funcionando. No se crea ningún selector, diálogo, terminal,
 notificación ni ventana gestionada.
+
+## Catálogo de aplicaciones
+
+El catálogo se reconstruye al arrancar o reiniciar AntonioWM. Primero lee
+`/usr/share/applications/` y después `$XDG_DATA_HOME/applications/` o
+`~/.local/share/applications/`; una entrada de usuario con el mismo nombre de
+archivo sustituye a la del sistema.
+
+Para cada grupo `[Desktop Entry]` se interpretan `Type`, `Name`, `Exec`,
+`Icon`, `Categories`, `Hidden`, `NoDisplay`, `TryExec` y `Terminal`. Sólo se
+aceptan entradas `Type=Application` visibles y con `TryExec` disponible. Los
+códigos de campo de `Exec` (`%f`, `%F`, `%u`, `%U`, `%i`, `%c`, `%k` y
+equivalentes) se eliminan por token; `%%` se conserva como `%`. Los argumentos
+se vuelven a citar antes de pasar al lanzador asíncrono.
+
+Las aplicaciones se ordenan por nombre dentro de `Accesorios`, `Desarrollo`,
+`Gráficos`, `Internet`, `Multimedia`, `Oficina`, `Sistema` y `Otros`. Una
+entrada `Terminal=true` se ejecuta con la terminal configurada (`--` para
+`gnome-terminal`, `-e` para las demás). Los iconos PNG se buscan en rutas
+absolutas, junto al `.desktop` y en ubicaciones hicolor/pixmaps habituales; si
+no se encuentra un PNG utilizable, el nombre continúa visible sin error.
 
 ## Dependencias en Debian 13
 
@@ -270,7 +310,7 @@ La versión puede consultarse sin conectarse al servidor X:
 ./antoniowm -v
 ```
 
-Ambas órdenes imprimen `AntonioWM 0.4.10-screenshot` y terminan correctamente
+Ambas órdenes imprimen `AntonioWM 0.4.11-panel-menu` y terminan correctamente
 aunque no exista `DISPLAY` o ya haya otro gestor controlando la pantalla.
 
 Objetivos disponibles:
@@ -279,7 +319,9 @@ Objetivos disponibles:
 make check       # recompila con todos los avisos tratados como errores
 make debug       # símbolos de depuración y -O0
 make test-client # clientes X11 usados por las pruebas
-make smoke       # regresiones FASES 1–4, barras y multimonitor en Xephyr
+make smoke       # parser .desktop y regresiones X11 completas en Xephyr
+make desktop-entries-smoke # sólo descubrimiento/parsing de aplicaciones
+make panel-menu-smoke # sólo panel único, menú, acciones y reinicio
 make multimonitor-smoke # sólo geometría RandR y resize por frame
 make screenshot-smoke  # sólo captura, CLIPBOARD, locks y procesos hijos
 make audit-smoke # carga, cierres concurrentes y limpieza/reinicio del WM
@@ -322,15 +364,19 @@ con el gestor del escritorio anfitrión.
 | Cambiar al escritorio 1–4 | `Super + 1` … `Super + 4` |
 | Enviar ventana al escritorio 1–4 | `Super + Mayús + 1` … `Super + Mayús + 4` |
 | Reiniciar AntonioWM | `Super + Mayús + R` |
-| Enfocar y elevar | clic en cliente, título o entrada de la barra |
+| Enfocar y elevar | clic en cliente, título o tarea del panel |
 | Mover | arrastrar el título o `Alt + botón izquierdo` |
 | Redimensionar | arrastrar un borde o `Alt + botón derecho` |
 | Minimizar | botón de minimizar |
-| Restaurar minimizada | clic en su entrada de la barra |
-| Cambiar escritorio | clic en 1–4 en la barra |
-| Lanzar aplicación | clic en Chrome, Terminal, Archivos o GIMP abajo |
-| Cambiar a una tarea | clic en su botón de la barra inferior |
-| Minimizar tarea activa | segundo clic en su botón de la barra inferior |
+| Restaurar minimizada | clic en su tarea del panel |
+| Cambiar escritorio | clic en 1–4 del panel |
+| Abrir/cerrar menú principal | clic en `AntonioWM` |
+| Recorrer el menú | flechas, `Inicio`, `Fin` o rueda |
+| Abrir/activar entrada | `Derecha`, `Enter`, espacio o clic |
+| Volver/cerrar menú | `Izquierda` o `Escape` |
+| Lanzar aplicación | clic en un launcher o entrada del menú |
+| Cambiar a una tarea | clic en su botón del panel |
+| Minimizar tarea activa | segundo clic en su botón del panel |
 
 `AWM_TERMINAL` en `config.h` define la terminal de fábrica. La variable de
 entorno conserva precedencia sobre el archivo de usuario:
@@ -362,6 +408,11 @@ Ejemplo completo:
 terminal=xfce4-terminal
 screenshot.command=maim | xclip -selection clipboard -t image/png -i
 focus_follows_mouse=false
+
+system.logout.command=
+system.switch_user.command=
+system.reboot.command=systemctl reboot
+system.poweroff.command=systemctl poweroff
 
 taskbar.enabled=true
 taskbar.height=30
@@ -408,17 +459,26 @@ reinicia AntonioWM y vuelve a leer el archivo sin cerrar las aplicaciones.
 `screenshot.command` puede contener una tubería u otro comando shell; si se
 omite, se utiliza el comando `maim | xclip ...` mostrado anteriormente.
 
+Las cuatro claves `system.*.command` controlan las acciones del menú. Un
+`system.logout.command` vacío usa la terminación limpia de AntonioWM, que
+reparenta los clientes y sale de la sesión. Un `system.switch_user.command`
+vacío intenta `gdmflexiserver`; si no está disponible, la entrada queda
+desactivada. Reinicio y apagado usan por defecto `systemctl reboot` y
+`systemctl poweroff`, respectivamente, y se ejecutan sólo después de la
+confirmación integrada. Los permisos finales dependen de la política de
+logind/polkit de la sesión.
+
 `config.h` sigue siendo la fuente de todos los valores de fábrica y contiene
 además colores, tipografía, dimensiones de decoraciones y atajos, que en esta
 versión aún requieren recompilar.
 
 ## Pruebas automáticas
 
-`make smoke` ejecuta cinco suites dentro de Xephyr. La primera cubre las
-regresiones de FASES 1–3: reparenting, decoraciones, cascada, foco, teclado,
-ratón, resize, maximización/restauración, fullscreen, minimización,
-escritorios, barra, cierre y reinicio. La segunda (`smoke_phase4_xephyr.sh`)
-añade:
+`make smoke` empieza con una prueba unitaria del parser `.desktop` y después
+ejecuta seis suites dentro de Xephyr. `smoke_xephyr.sh` cubre las regresiones
+de FASES 1–3: reparenting, decoraciones, cascada, foco, teclado, ratón, resize,
+maximización/restauración, fullscreen, minimización, escritorios, panel,
+cierre y reinicio. `smoke_phase4_xephyr.sh` añade:
 
 - transients modales, centrado, escritorio y stacking familiar;
 - todos los tipos de ventana y la política de decoraciones/Motif;
@@ -427,37 +487,38 @@ añade:
 - valores extremos de size hints sin overflow del protocolo;
 - estados above, below, sticky, skip, hidden y modal;
 - `_NET_MOVERESIZE_WINDOW`, movimiento interactivo y restacking;
-- struts completos/parciales, barra propia y `_NET_WORKAREA` estable;
+- struts completos/parciales, panel propio y `_NET_WORKAREA` estable;
 - persistencia de relaciones y estados tras reiniciar el WM.
 
-La tercera (`smoke_taskbar_xephyr.sh`) comprueba:
+`smoke_taskbar_xephyr.sh` comprueba:
 
 - carga de un icono PNG real y fallback de texto para una ruta inexistente;
 - lectura de terminal, altura, padding, separación, comandos, etiquetas,
   nombres de escritorios y política de foco desde un archivo externo;
-- geometría de la barra inferior y reserva combinada en `_NET_WORKAREA`;
+- geometría del panel inferior y reserva en `_NET_WORKAREA` desde `y=0`;
 - ejecución de los cuatro comandos configurados y del atajo de terminal, sin
   procesos zombie;
 - foco, elevación, minimización y restauración mediante los botones de tarea;
 - filtrado de `SKIP_TASKBAR` y separación por escritorios;
-- maximizado entre las dos barras y fullscreen sobre toda la pantalla;
+- maximizado entre `y=0` y el panel, y fullscreen sobre toda la pantalla;
 - reconstrucción y recarga tras reiniciar, y desactivación completa de la
   taskbar sin reservar workarea.
 
-La cuarta (`smoke_multimonitor_resize_xephyr.sh`) crea dos monitores lógicos
+`smoke_multimonitor_resize_xephyr.sh` crea dos monitores lógicos
 RandR en un Xephyr de 1200 × 700 y comprueba:
 
 - maximizado independiente primero en el monitor izquierdo y después en el
-  derecho, reservando 26 px arriba y 28 px abajo;
+  derecho, empezando ambos en `y=0` y reservando abajo sólo donde está el
+  panel primario;
 - restauración exacta antes y después de mover la misma ventana entre
   monitores;
-- fullscreen únicamente en el monitor actual, cubriendo ambas barras;
+- fullscreen únicamente en el monitor actual, cubriendo el panel;
 - selección por mayor intersección cuando una ventana cruza la frontera;
 - agarres invisibles de 7 px, crecimiento/reducción por el borde derecho,
   ambas esquinas inferiores y ventanas próximas al extremo de cada monitor;
 - incrementos ICCCM, `Alt + botón derecho` y restauración exacta tras resize.
 
-La quinta (`smoke_screenshot_xephyr.sh`) comprueba:
+`smoke_screenshot_xephyr.sh` comprueba:
 
 - ejecución del comando predeterminado y de un override
   `screenshot.command` leído del archivo de usuario;
@@ -467,6 +528,21 @@ La quinta (`smoke_screenshot_xephyr.sh`) comprueba:
   limpio del propietario anterior;
 - ausencia de ventanas visibles, bloqueo o procesos zombie;
 - continuidad del WM y de sus atajos cuando `maim` y `xclip` no existen.
+
+`test_desktop_entries.sh` crea catálogos aislados de sistema/usuario y valida
+override, orden, categorías, `Hidden`, `NoDisplay`, `TryExec`, iconos,
+`Terminal=true` y limpieza segura de los códigos de campo de `Exec`.
+
+`smoke_panel_menu_xephyr.sh` comprueba específicamente:
+
+- ausencia total de la barra superior, panel único y workarea desde `y=0`;
+- orden botón/escritorios/launchers/tareas/reloj y cambio de escritorio;
+- apertura y cierre con ratón, teclado, `Escape` y clic exterior;
+- recorrido de categorías, lanzamiento de `.desktop`, fallback sin icono y
+  envoltura de aplicaciones `Terminal=true`;
+- logout limpio conservando clientes, recarga del catálogo al reiniciar y
+  comandos configurados de cambio de usuario;
+- confirmaciones internas de reinicio/apagado y ausencia de procesos zombie.
 
 La suite usa sustitutos instrumentados de `maim`/`xclip`, porque esas dos
 herramientas opcionales no están instaladas en el entorno de pruebas. El
@@ -479,14 +555,16 @@ movimiento y resize, coordenadas EWMH extremas, iconificación y restauración,
 estados, escritorios, reinicio bajo carga y terminación limpia con `SIGTERM`.
 Puede ejecutarse con `make audit-smoke`.
 
-Las pantallas predeterminadas son `:98`, `:97`, `:95`, `:93` y `:92`. Pueden
+Las pantallas predeterminadas son `:98`, `:97`, `:95`, `:93`, `:92` y `:91`.
+Pueden
 cambiarse así:
 
 ```sh
 ANTONIOWM_TEST_DISPLAY=:77 ANTONIOWM_PHASE4_TEST_DISPLAY=:76 \
 ANTONIOWM_TASKBAR_TEST_DISPLAY=:75 \
 ANTONIOWM_MULTIMONITOR_TEST_DISPLAY=:74 \
-ANTONIOWM_SCREENSHOT_TEST_DISPLAY=:73 make smoke
+ANTONIOWM_SCREENSHOT_TEST_DISPLAY=:73 \
+ANTONIOWM_PANEL_MENU_TEST_DISPLAY=:72 make smoke
 ```
 
 En un contenedor donde xterm no pueda crear un pseudo-terminal, la primera
@@ -583,9 +661,19 @@ contenedor no incluye los binarios reales `maim` y `xclip`, por lo que el
 pegado final con ambos paquetes debe confirmarse en Debian; su protocolo X11
 se comprobó con el cliente instrumentado descrito arriba.
 
+Para 0.4.11 se ejecutaron la compilación estricta con `-Werror`, el parser
+`.desktop`, la nueva suite de panel/menú, las regresiones de taskbar,
+FASES 1–4, screenshot y la suite RandR de dos monitores. Esta validación
+detectó además una extensión de signo en extremos `CARDINAL` de struts; tras
+normalizarlos a 32 bits, `_NET_WM_STRUT_PARTIAL`, el panel y la maximización
+por monitor volvieron a pasar juntos. Los comandos destructivos se probaron
+con sustitutos instrumentados: AntonioWM no ejecutó reinicio ni apagado reales
+en el entorno de pruebas.
+
 ## Configuración
 
-Los valores de fábrica están en `config.h`: terminal; captura; barras; lanzadores;
+Los valores de fábrica están en `config.h`: terminal; captura; panel; menú;
+lanzadores; acciones de sesión/sistema;
 título; borde; botones; márgenes; fuente; paleta; reloj; escritorios; cascada;
 foco; tamaños interactivos; modificadores y atajos. El archivo de usuario
 sobrescribe el subconjunto documentado sin compilar. Después de cambiar el
@@ -608,8 +696,10 @@ AntonioWM/
 ├── src/stacking.c     Capas, transients y orden de apilamiento
 ├── src/draw.c         Texto Xft/fallback X11 y primitivas de dibujo
 ├── src/decor.c        Frames, títulos, botones y geometría decorada
-├── src/bar.c          Barra interactiva, lista, urgencia y reloj
-├── src/taskbar.c      Barra inferior, iconos, lanzadores y tareas
+├── src/clock.c        Reloj compartido y cálculo del siguiente minuto
+├── src/taskbar.c      Panel único, menú, escritorios, launchers y tareas
+├── src/menu.c         Menú nativo, navegación y acciones del sistema
+├── src/desktop_entries.c Descubrimiento y parser de archivos .desktop
 ├── src/runtime_config.c Parser acotado del archivo de usuario
 ├── src/icon.c         Decodificación PNG y dibujo XImage
 ├── examples/config    Configuración externa de ejemplo
@@ -619,14 +709,24 @@ AntonioWM/
 └── README.md
 ```
 
-## Límites deliberados de la versión 0.4.10
+## Límites deliberados de la versión 0.4.11
 
 - Fullscreen ocupa por defecto un único monitor. Aún no se implementa la
   solicitud opcional `_NET_WM_FULLSCREEN_MONITORS` para abarcar varios
   monitores de forma explícita.
 - No hay compositor, transparencias, sombras complejas, animaciones, búsqueda
-  automática en temas de iconos ni motor de temas. Los iconos de ventanas en
-  la taskbar siguen siendo opcionales y esta versión conserva allí el título.
+  completa de todos los temas de iconos ni motor de temas. El catálogo busca
+  PNG en ubicaciones hicolor/pixmaps habituales; otros formatos quedan en
+  fallback de texto. Los iconos de ventanas en la taskbar siguen siendo
+  opcionales y esta versión conserva allí el título.
+- Existe un único panel, asociado al monitor primario. `_NET_WORKAREA` sólo
+  puede publicar un rectángulo global por escritorio, por lo que en una
+  topología desigual se anuncia una reserva conservadora; el cálculo interno
+  de maximización sí conserva el workarea exacto de cada monitor.
+- El catálogo interpreta la sección principal y los campos necesarios para
+  lanzar aplicaciones, pero no implementa todavía todas las variantes del
+  estándar Desktop Entry, como nombres localizados o búsqueda exhaustiva en
+  temas no hicolor.
 - La compatibilidad ICCCM/EWMH es deliberadamente razonable, no una afirmación
   de cobertura total de todas las extensiones posibles.
 - No se instala todavía como sesión de un display manager. La instalación en

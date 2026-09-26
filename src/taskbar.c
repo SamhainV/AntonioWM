@@ -6,12 +6,15 @@
 #include <string.h>
 
 typedef enum {
-    TASKBAR_SLOT_LAUNCHER = 0,
+    TASKBAR_SLOT_MENU = 0,
+    TASKBAR_SLOT_DESKTOP,
+    TASKBAR_SLOT_LAUNCHER,
     TASKBAR_SLOT_CLIENT
 } TaskbarSlotKind;
 
 typedef struct {
     TaskbarSlotKind kind;
+    unsigned int desktop_index;
     size_t launcher_index;
     Window client_window;
     int x;
@@ -88,6 +91,12 @@ static bool same_identity(const TaskbarSlot *first, const TaskbarSlot *second)
 {
     if (first->kind != second->kind) {
         return false;
+    }
+    if (first->kind == TASKBAR_SLOT_MENU) {
+        return true;
+    }
+    if (first->kind == TASKBAR_SLOT_DESKTOP) {
+        return first->desktop_index == second->desktop_index;
     }
     if (first->kind == TASKBAR_SLOT_LAUNCHER) {
         return first->launcher_index == second->launcher_index;
@@ -216,15 +225,62 @@ static void draw_launcher_button(const TaskbarSlot *slot,
     }
 }
 
-static int layout_launchers(int bar_width, int height)
+static int append_fixed_slot(TaskbarSlotKind kind,
+                             unsigned int desktop_index,
+                             size_t launcher_index,
+                             int x,
+                             int width)
+{
+    TaskbarSlot *slot = &slots[slot_count++];
+
+    slot->kind = kind;
+    slot->desktop_index = desktop_index;
+    slot->launcher_index = launcher_index;
+    slot->client_window = None;
+    slot->x = x;
+    slot->width = width;
+    return x + width + wm.config.taskbar_gap;
+}
+
+static int layout_panel_start(int content_end, int height)
 {
     size_t index;
     int x = wm.config.taskbar_padding;
+    int available;
+    int width;
+    TaskbarSlot *slot;
+
+    available = content_end - x;
+    if (available > 0) {
+        width = minimum_int(AWM_PANEL_MENU_WIDTH, available);
+        x = append_fixed_slot(TASKBAR_SLOT_MENU, 0U, 0U, x, width);
+        draw_button(&slots[slot_count - 1U],
+                    menu_is_open() ? wm.bar_selected : wm.bar_item,
+                    AWM_NAME,
+                    true,
+                    height);
+    }
+
+    for (index = 0U; index < wm.desktop_count; ++index) {
+        available = content_end - x;
+        if (available <= 0) {
+            break;
+        }
+        width = minimum_int(AWM_PANEL_DESKTOP_WIDTH, available);
+        x = append_fixed_slot(TASKBAR_SLOT_DESKTOP,
+                              (unsigned int)index,
+                              0U,
+                              x,
+                              width);
+        draw_button(&slots[slot_count - 1U],
+                    index == wm.current_desktop ? wm.bar_selected : wm.bar_item,
+                    wm.config.desktop_names[index],
+                    true,
+                    height);
+    }
 
     for (index = 0U; index < launcher_count(); ++index) {
-        TaskbarSlot *slot;
-        int available = bar_width - wm.config.taskbar_padding - x;
-        int width;
+        available = content_end - x;
 
         if (available <= 0) {
             break;
@@ -232,23 +288,18 @@ static int layout_launchers(int bar_width, int height)
         width = launcher_icons[index].rgba != NULL
                     ? minimum_int(height, available)
                     : minimum_int(AWM_TASKBAR_LAUNCHER_WIDTH, available);
-        slot = &slots[slot_count++];
-        slot->kind = TASKBAR_SLOT_LAUNCHER;
-        slot->launcher_index = index;
-        slot->client_window = None;
-        slot->x = x;
-        slot->width = width;
+        x = append_fixed_slot(TASKBAR_SLOT_LAUNCHER, 0U, index, x, width);
+        slot = &slots[slot_count - 1U];
         draw_launcher_button(slot, index, height);
-        x += width + wm.config.taskbar_gap;
     }
     return x;
 }
 
-static void layout_clients(int start, int bar_width, int height)
+static void layout_clients(int start, int content_end, int height)
 {
     Client *client;
     size_t count = desktop_client_count();
-    int end = bar_width - wm.config.taskbar_padding;
+    int end = content_end;
     int available = end - start;
     int total_gaps;
     int each;
@@ -278,6 +329,7 @@ static void layout_clients(int start, int bar_width, int height)
 
         slot = &slots[slot_count++];
         slot->kind = TASKBAR_SLOT_CLIENT;
+        slot->desktop_index = 0U;
         slot->launcher_index = 0U;
         slot->client_window = client->window;
         slot->x = x;
@@ -311,6 +363,31 @@ static void layout_clients(int start, int bar_width, int height)
         draw_button(slot, background, label, false, height);
         x += width + wm.config.taskbar_gap;
     }
+}
+
+static void draw_clock(int bar_width, int height)
+{
+    const char *text = clock_text();
+    int right = bar_width - wm.config.taskbar_padding;
+    int left = right - AWM_PANEL_CLOCK_WIDTH;
+    int measured = draw_text_width(text);
+    int text_x = right - measured;
+
+    if (left < 0) {
+        left = 0;
+    }
+    if (text_x < left) {
+        text_x = left;
+    }
+    draw_text_ellipsized(wm.taskbar_window,
+                         wm.bar_foreground,
+                         text_x,
+                         draw_text_baseline(height),
+                         left,
+                         1,
+                         (unsigned int)maximum_int(right - left, 1),
+                         (unsigned int)maximum_int(height - 1, 1),
+                         text);
 }
 
 static void free_launcher_icons(void)
@@ -383,7 +460,7 @@ bool taskbar_initialize(void)
         free_launcher_icons();
         return false;
     }
-    XStoreName(wm.display, wm.taskbar_window, "AntonioWM Taskbar");
+    XStoreName(wm.display, wm.taskbar_window, "AntonioWM Panel");
     XMapRaised(wm.display, wm.taskbar_window);
     taskbar_update();
     return true;
@@ -413,6 +490,7 @@ void taskbar_update(void)
     int width;
     int height;
     int client_start;
+    int content_end;
 
     if (wm.taskbar_window == None) {
         return;
@@ -420,7 +498,8 @@ void taskbar_update(void)
     ewmh_get_taskbar_geometry(&x, &y, &width, &height);
     (void)x;
     (void)y;
-    required = launcher_count() + desktop_client_count();
+    required = 1U + (size_t)wm.desktop_count + launcher_count() +
+               desktop_client_count();
     slot_count = 0U;
     if (!reserve_slots(required)) {
         has_hovered_slot = false;
@@ -440,8 +519,14 @@ void taskbar_update(void)
               0,
               maximum_int(width - 1, 0),
               0);
-    client_start = layout_launchers(width, height);
-    layout_clients(client_start, width, height);
+    content_end = width - wm.config.taskbar_padding - AWM_PANEL_CLOCK_WIDTH -
+                  wm.config.taskbar_gap;
+    if (content_end < 0) {
+        content_end = 0;
+    }
+    client_start = layout_panel_start(content_end, height);
+    layout_clients(client_start, content_end, height);
+    draw_clock(width, height);
 
     if (has_hovered_slot && !identity_is_present(&hovered_slot)) {
         has_hovered_slot = false;
@@ -480,6 +565,18 @@ void taskbar_raise(void)
 
 static void activate_slot(const TaskbarSlot *slot)
 {
+    if (slot->kind == TASKBAR_SLOT_MENU) {
+        menu_toggle(wm.last_event_time);
+        taskbar_update();
+        return;
+    }
+    if (slot->kind == TASKBAR_SLOT_DESKTOP) {
+        if (slot->desktop_index < wm.desktop_count) {
+            menu_close();
+            desktop_switch(slot->desktop_index);
+        }
+        return;
+    }
     if (slot->kind == TASKBAR_SLOT_LAUNCHER) {
         if (slot->launcher_index < launcher_count()) {
             command_spawn(wm.config.launchers[slot->launcher_index].command);

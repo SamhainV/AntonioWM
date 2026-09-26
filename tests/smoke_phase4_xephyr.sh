@@ -563,36 +563,37 @@ start_client "P4 Dock Partial" "1024x40+0+0" none --type DOCK \
     --min 1x1 --inc 1x1 --strut-partial-top 40
 DOCK_PARTIAL=$(wait_for_window "P4 Dock Partial")
 wait_for_managed "$DOCK_PARTIAL"
-wait_for_workarea "0, 66, 1024, 674"
-BAR=$(DISPLAY="$NESTED_CLIENT_DISPLAY" xdotool search --name '^AntonioWM Bar$' |
+wait_for_workarea "0, 40, 1024, 700"
+BAR=$(DISPLAY="$NESTED_CLIENT_DISPLAY" xdotool search --name '^AntonioWM Panel$' |
     head -n 1)
-[ "$(window_field "$BAR" Y)" = 40 ] ||
-    fail "La barra propia no convivio con _NET_WM_STRUT_PARTIAL."
+[ "$(window_field "$BAR" Y)" = 740 ] ||
+    fail "El panel inferior no convivio con _NET_WM_STRUT_PARTIAL."
 
 ewmh_request state "$PARENT" add MAXIMIZED_VERT MAXIMIZED_HORZ
 sleep 0.2
 [ "$(frame_field "$PARENT" X)" = 0 ] &&
-[ "$(frame_field "$PARENT" Y)" = 66 ] &&
+[ "$(frame_field "$PARENT" Y)" = 40 ] &&
 [ "$(frame_field "$PARENT" WIDTH)" = 1024 ] &&
-[ "$(frame_field "$PARENT" HEIGHT)" = 674 ] ||
-    fail "El maximizado no respeto strut parcial mas barra propia."
+[ "$(frame_field "$PARENT" HEIGHT)" = 700 ] ||
+    fail "El maximizado no respeto strut parcial mas panel propio."
 ewmh_request state "$PARENT" remove MAXIMIZED_VERT MAXIMIZED_HORZ
 ewmh_request close "$DOCK_PARTIAL"
 wait_for_gone "$DOCK_PARTIAL"
-wait_for_workarea "0, 26, 1024, 714"
-[ "$(window_field "$BAR" Y)" = 0 ] || fail "La barra no volvio a y=0."
+wait_for_workarea "0, 0, 1024, 740"
+[ "$(window_field "$BAR" Y)" = 740 ] ||
+    fail "El panel no volvio al borde inferior."
 
 start_client "P4 Dock Legacy" "30x768+0+0" none --type DOCK \
     --min 1x1 --inc 1x1 --strut 30,0,0,0
 DOCK_LEGACY=$(wait_for_window "P4 Dock Legacy")
 wait_for_managed "$DOCK_LEGACY"
-wait_for_workarea "30, 26, 994, 714"
+wait_for_workarea "30, 0, 994, 740"
 [ "$(window_field "$BAR" X)" = 30 ] &&
 [ "$(window_field "$BAR" WIDTH)" = 994 ] ||
-    fail "La barra no convivio con _NET_WM_STRUT legado."
+    fail "El panel no convivio con _NET_WM_STRUT legado."
 ewmh_request close "$DOCK_LEGACY"
 wait_for_gone "$DOCK_LEGACY"
-wait_for_workarea "0, 26, 1024, 714"
+wait_for_workarea "0, 0, 1024, 740"
 
 start_client "P4 Below" "180x100+400+260" below --min 1x1 --inc 1x1
 BELOW=$(wait_for_window "P4 Below")

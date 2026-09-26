@@ -282,7 +282,15 @@ bool wm_initialize(int argc, char **argv)
         wm.display = NULL;
         return false;
     }
-    if (!bar_initialize()) {
+    clock_initialize();
+    if (!desktop_entries_initialize()) {
+        fprintf(stderr,
+                "%s: no se pudo cargar el catalogo de aplicaciones; "
+                "el menu se iniciara vacio\n",
+                AWM_NAME);
+    }
+    if (!taskbar_initialize()) {
+        desktop_entries_cleanup();
         draw_cleanup();
         ewmh_cleanup();
         desktop_cleanup();
@@ -291,8 +299,9 @@ bool wm_initialize(int argc, char **argv)
         wm.display = NULL;
         return false;
     }
-    if (!taskbar_initialize()) {
-        bar_cleanup();
+    if (!menu_initialize()) {
+        taskbar_cleanup();
+        desktop_entries_cleanup();
         draw_cleanup();
         ewmh_cleanup();
         desktop_cleanup();
@@ -321,8 +330,7 @@ bool wm_initialize(int argc, char **argv)
     keyboard_grab_keys();
     scan_existing_windows();
     ewmh_update_client_list();
-    bar_update();
-    bar_raise();
+    taskbar_update();
     taskbar_raise();
     stacking_enforce();
 
@@ -354,8 +362,8 @@ void wm_run(void)
             events_dispatch(&event);
         }
         /* Keep the clock current even while clients continuously generate
-         * events; bar_tick() is cheap and redraws only when the minute changes. */
-        bar_tick();
+         * events; clock_tick() redraws only when the minute changes. */
+        clock_tick();
         if (!wm.running || stop_requested != 0) {
             break;
         }
@@ -363,9 +371,9 @@ void wm_run(void)
         descriptor.fd = ConnectionNumber(wm.display);
         descriptor.events = POLLIN;
         descriptor.revents = 0;
-        result = poll(&descriptor, 1U, bar_next_timeout_ms());
+        result = poll(&descriptor, 1U, clock_next_timeout_ms());
         if (result == 0) {
-            bar_tick();
+            clock_tick();
         } else if (result < 0 && errno != EINTR) {
             perror(AWM_NAME ": poll");
             wm.running = false;
@@ -380,9 +388,10 @@ void wm_cleanup(void)
     }
 
     keyboard_ungrab_keys();
+    menu_cleanup();
     client_cleanup_all();
     taskbar_cleanup();
-    bar_cleanup();
+    desktop_entries_cleanup();
     ewmh_cleanup();
     desktop_cleanup();
     draw_cleanup();

@@ -798,7 +798,12 @@ static bool get_cardinal_array(Window window,
                            &data) == Success &&
         actual_type == XA_CARDINAL && actual_format == 32 &&
         item_count >= wanted && data != NULL) {
-        memcpy(values, data, (size_t)wanted * sizeof(*values));
+        const unsigned long *items = (const unsigned long *)data;
+        unsigned long index;
+
+        for (index = 0UL; index < wanted; ++index) {
+            values[index] = items[index] & 0xffffffffUL;
+        }
         valid = true;
     }
     if (data != NULL) {
@@ -915,7 +920,7 @@ void ewmh_get_workarea(unsigned int desktop, WorkArea *area)
     }
     external_struts(desktop, &left, &right, &top, &bottom);
     area->x = (int)left;
-    area->y = (int)top + (int)AWM_BAR_HEIGHT;
+    area->y = (int)top;
     taskbar_height = wm.config.taskbar_enabled
                          ? (int)wm.config.taskbar_height
                          : 0;
@@ -956,28 +961,15 @@ static bool rectangles_intersect(int left_x,
            (int64_t)right_y < (int64_t)left_y + left_height;
 }
 
-void ewmh_get_monitor_workarea(unsigned int desktop,
-                               const Monitor *monitor,
-                               WorkArea *area)
+static void external_monitor_workarea(unsigned int desktop,
+                                      const Monitor *monitor,
+                                      WorkArea *area)
 {
     Client *client;
-    int left;
-    int top;
-    int right;
-    int bottom;
-    int bar_x;
-    int bar_y;
-    int bar_width;
-    int bar_height;
-
-    if (monitor == NULL || area == NULL) {
-        return;
-    }
-
-    left = monitor->x;
-    top = monitor->y;
-    right = monitor->x + monitor->width;
-    bottom = monitor->y + monitor->height;
+    int left = monitor->x;
+    int top = monitor->y;
+    int right = monitor->x + monitor->width;
+    int bottom = monitor->y + monitor->height;
 
     for (client = wm.clients; client != NULL; client = client->next) {
         int boundary;
@@ -1030,22 +1022,34 @@ void ewmh_get_monitor_workarea(unsigned int desktop,
         }
     }
 
-    ewmh_get_bar_geometry(&bar_x, &bar_y, &bar_width, &bar_height);
-    if (rectangles_intersect(monitor->x,
-                             monitor->y,
-                             monitor->width,
-                             monitor->height,
-                             bar_x,
-                             bar_y,
-                             bar_width,
-                             bar_height)) {
-        if (bar_y + bar_height > top) {
-            top = bar_y + bar_height;
-        }
-        if (top > bottom) {
-            top = bottom;
-        }
+    area->x = left;
+    area->y = top;
+    area->width = right > left ? right - left : 1;
+    area->height = bottom > top ? bottom - top : 1;
+}
+
+void ewmh_get_monitor_workarea(unsigned int desktop,
+                               const Monitor *monitor,
+                               WorkArea *area)
+{
+    int left;
+    int top;
+    int right;
+    int bottom;
+    int bar_x;
+    int bar_y;
+    int bar_width;
+    int bar_height;
+
+    if (monitor == NULL || area == NULL) {
+        return;
     }
+
+    external_monitor_workarea(desktop, monitor, area);
+    left = area->x;
+    top = area->y;
+    right = area->x + area->width;
+    bottom = area->y + area->height;
 
     if (wm.config.taskbar_enabled) {
         ewmh_get_taskbar_geometry(&bar_x,
@@ -1075,52 +1079,31 @@ void ewmh_get_monitor_workarea(unsigned int desktop,
     area->height = bottom > top ? bottom - top : 1;
 }
 
-void ewmh_get_bar_geometry(int *x, int *y, int *width, int *height)
-{
-    unsigned long left;
-    unsigned long right;
-    unsigned long top;
-    unsigned long bottom;
-    int usable_width;
-
-    external_struts(wm.current_desktop, &left, &right, &top, &bottom);
-    (void)bottom;
-    usable_width = wm.screen_width - (int)left - (int)right;
-    *x = (int)left;
-    *y = (int)top;
-    *width = usable_width > 0 ? usable_width : 1;
-    *height = AWM_BAR_HEIGHT > 0U ? (int)AWM_BAR_HEIGHT : 1;
-}
-
 void ewmh_get_taskbar_geometry(int *x, int *y, int *width, int *height)
 {
-    unsigned long left;
-    unsigned long right;
-    unsigned long top;
-    unsigned long bottom;
-    int usable_width;
+    Monitor monitor;
+    WorkArea area;
     int configured_height;
 
-    external_struts(wm.current_desktop, &left, &right, &top, &bottom);
-    (void)top;
-    usable_width = wm.screen_width - (int)left - (int)right;
+    monitor_primary(&monitor);
+    external_monitor_workarea(wm.current_desktop, &monitor, &area);
     configured_height = wm.config.taskbar_height > 0U
                             ? (int)wm.config.taskbar_height
                             : 1;
-    *x = (int)left;
-    *y = wm.screen_height - (int)bottom - configured_height;
-    if (*y < 0) {
-        *y = 0;
+    if (configured_height > area.height) {
+        configured_height = area.height;
     }
-    *width = usable_width > 0 ? usable_width : 1;
+    *x = area.x;
+    *y = area.y + area.height - configured_height;
+    *width = area.width;
     *height = configured_height;
 }
 
 void ewmh_recalculate_workarea(void)
 {
     ewmh_update_desktop_properties();
-    bar_reconfigure();
     taskbar_reconfigure();
+    menu_reconfigure();
     desktop_reapply_screen_states();
 }
 
@@ -1236,7 +1219,7 @@ static void set_client_attention(Client *client, bool attention)
     }
     client->demands_attention = attention && client != wm.focused;
     ewmh_update_client_state(client);
-    bar_update();
+    taskbar_update();
 }
 
 static void apply_simple_state(Client *client, Atom state, long action)
@@ -1483,7 +1466,7 @@ bool ewmh_handle_client_message(const XClientMessageEvent *event)
             ewmh_update_client_state(client);
             ewmh_recalculate_workarea();
             stacking_enforce();
-            bar_update();
+            taskbar_update();
         } else if (desktop < (unsigned long)wm.desktop_count) {
             client->sticky = false;
             if (client->desktop == (unsigned int)desktop) {
@@ -1500,7 +1483,7 @@ bool ewmh_handle_client_message(const XClientMessageEvent *event)
             ewmh_update_client_state(client);
             ewmh_recalculate_workarea();
             stacking_enforce();
-            bar_update();
+            taskbar_update();
         }
         return true;
     }
@@ -1560,7 +1543,7 @@ bool ewmh_handle_client_message(const XClientMessageEvent *event)
         ewmh_set_allowed_actions(client);
         ewmh_recalculate_workarea();
         stacking_enforce();
-        bar_update();
+        taskbar_update();
         return true;
     }
 

@@ -202,6 +202,14 @@ WM_PID=$!
 sleep 0.4
 kill -0 "$WM_PID" 2>/dev/null || fail "AntonioWM termino durante el arranque."
 
+PANEL=$(DISPLAY="$NESTED_CLIENT_DISPLAY" \
+    xdotool search --name '^AntonioWM Panel$' 2>/dev/null | head -n 1 || true)
+[ -n "$PANEL" ] || fail "No se creo el panel en el monitor primario."
+wait_for_geometry "$PANEL" 0 672 600 28
+DISPLAY="$NESTED_CLIENT_DISPLAY" xprop -root _NET_WORKAREA |
+    grep -q '= 0, 0, 1200, 672' ||
+    fail "_NET_WORKAREA global no refleja la reserva conservadora del panel."
+
 DISPLAY="$NESTED_CLIENT_DISPLAY" "$PROJECT_DIR/tests/awm-test-client" \
     "AWM MultiMonitor Resize" "300x200+100+100" \
     >"$TEST_TMP/client.log" 2>&1 &
@@ -210,25 +218,25 @@ WINDOW=$(wait_for_window)
 FRAME=$(wait_for_management "$WINDOW")
 wait_for_geometry "$FRAME" 100 100 304 226
 
-# Maximizar usa sólo el workarea izquierdo: 26 px arriba y 28 abajo.
+# Maximizar usa sólo el workarea izquierdo: y=0 y 28 px para el panel.
 DISPLAY="$NESTED_CLIENT_DISPLAY" "$PROJECT_DIR/tests/awm-ewmh-request" \
     state "$WINDOW" add MAXIMIZED_VERT MAXIMIZED_HORZ
-wait_for_geometry "$FRAME" 0 26 600 646
+wait_for_geometry "$FRAME" 0 0 600 672
 DISPLAY="$NESTED_CLIENT_DISPLAY" "$PROJECT_DIR/tests/awm-ewmh-request" \
     state "$WINDOW" remove MAXIMIZED_VERT MAXIMIZED_HORZ
 wait_for_geometry "$FRAME" 100 100 304 226
 
-# La misma ventana se mueve al monitor derecho y se maximiza sólo allí.
+# El monitor derecho no contiene panel y conserva sus 700 px completos.
 DISPLAY="$NESTED_CLIENT_DISPLAY" xdotool windowmove "$WINDOW" 700 100
 wait_for_geometry "$FRAME" 700 100 304 226
 DISPLAY="$NESTED_CLIENT_DISPLAY" "$PROJECT_DIR/tests/awm-ewmh-request" \
     state "$WINDOW" add MAXIMIZED_VERT MAXIMIZED_HORZ
-wait_for_geometry "$FRAME" 600 26 600 646
+wait_for_geometry "$FRAME" 600 0 600 700
 DISPLAY="$NESTED_CLIENT_DISPLAY" "$PROJECT_DIR/tests/awm-ewmh-request" \
     state "$WINDOW" remove MAXIMIZED_VERT MAXIMIZED_HORZ
 wait_for_geometry "$FRAME" 700 100 304 226
 
-# Fullscreen cubre el monitor derecho, incluidas ambas barras, y restaura exacto.
+# Fullscreen cubre el monitor derecho y restaura exacto.
 DISPLAY="$NESTED_CLIENT_DISPLAY" "$PROJECT_DIR/tests/awm-ewmh-request" \
     state "$WINDOW" add FULLSCREEN
 wait_for_geometry "$FRAME" 600 0 600 700
@@ -241,7 +249,7 @@ DISPLAY="$NESTED_CLIENT_DISPLAY" xdotool windowmove "$WINDOW" 500 140
 wait_for_geometry "$FRAME" 500 140 304 226
 DISPLAY="$NESTED_CLIENT_DISPLAY" "$PROJECT_DIR/tests/awm-ewmh-request" \
     state "$WINDOW" add MAXIMIZED_VERT MAXIMIZED_HORZ
-wait_for_geometry "$FRAME" 600 26 600 646
+wait_for_geometry "$FRAME" 600 0 600 700
 DISPLAY="$NESTED_CLIENT_DISPLAY" "$PROJECT_DIR/tests/awm-ewmh-request" \
     state "$WINDOW" remove MAXIMIZED_VERT MAXIMIZED_HORZ
 wait_for_geometry "$FRAME" 500 140 304 226
@@ -328,7 +336,7 @@ FINAL_WIDTH=$(window_field "$FRAME" WIDTH)
 FINAL_HEIGHT=$(window_field "$FRAME" HEIGHT)
 DISPLAY="$NESTED_CLIENT_DISPLAY" "$PROJECT_DIR/tests/awm-ewmh-request" \
     state "$WINDOW" add MAXIMIZED_VERT MAXIMIZED_HORZ
-wait_for_geometry "$FRAME" 600 26 600 646
+wait_for_geometry "$FRAME" 600 0 600 700
 DISPLAY="$NESTED_CLIENT_DISPLAY" "$PROJECT_DIR/tests/awm-ewmh-request" \
     state "$WINDOW" remove MAXIMIZED_VERT MAXIMIZED_HORZ
 wait_for_geometry "$FRAME" "$FINAL_X" "$FINAL_Y" "$FINAL_WIDTH" "$FINAL_HEIGHT"

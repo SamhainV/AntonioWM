@@ -320,6 +320,26 @@ void monitor_for_client(const Client *client, Monitor *monitor)
                           monitor);
 }
 
+void monitor_primary(Monitor *monitor)
+{
+    size_t index;
+
+    if (monitor == NULL) {
+        return;
+    }
+    if (wm.monitors == NULL || wm.monitor_count == 0U) {
+        monitor_for_rectangle(0, 0, 1, 1, monitor);
+        return;
+    }
+    for (index = 0U; index < wm.monitor_count; ++index) {
+        if (wm.monitors[index].primary) {
+            *monitor = wm.monitors[index];
+            return;
+        }
+    }
+    *monitor = wm.monitors[0];
+}
+
 bool monitor_handle_event(XEvent *event)
 {
     if (!wm.randr_available || event == NULL) {
