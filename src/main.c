@@ -310,6 +310,7 @@ bool wm_initialize(int argc, char **argv)
         wm.display = NULL;
         return false;
     }
+    tray_initialize();
 
     memset(&child_action, 0, sizeof(child_action));
     child_action.sa_handler = SIG_IGN;
@@ -389,6 +390,7 @@ void wm_cleanup(void)
 
     keyboard_ungrab_keys();
     menu_cleanup();
+    tray_cleanup();
     client_cleanup_all();
     taskbar_cleanup();
     desktop_entries_cleanup();

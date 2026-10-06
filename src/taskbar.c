@@ -491,6 +491,11 @@ void taskbar_update(void)
     int height;
     int client_start;
     int content_end;
+    int clock_right;
+    int clock_left;
+    int tray_right;
+    int tray_left;
+    int tray_width;
 
     if (wm.taskbar_window == None) {
         return;
@@ -519,13 +524,30 @@ void taskbar_update(void)
               0,
               maximum_int(width - 1, 0),
               0);
-    content_end = width - wm.config.taskbar_padding - AWM_PANEL_CLOCK_WIDTH -
-                  wm.config.taskbar_gap;
+    clock_right = width - wm.config.taskbar_padding;
+    clock_left = clock_right - AWM_PANEL_CLOCK_WIDTH;
+    if (clock_left < 0) {
+        clock_left = 0;
+    }
+    tray_right = clock_left - wm.config.taskbar_gap;
+    if (tray_right < 0) {
+        tray_right = 0;
+    }
+    tray_width = tray_preferred_width(height);
+    tray_left = tray_right - tray_width;
+    if (tray_left < wm.config.taskbar_padding) {
+        tray_left = wm.config.taskbar_padding;
+    }
+    if (tray_left > tray_right) {
+        tray_left = tray_right;
+    }
+    content_end = tray_left - (tray_width > 0 ? wm.config.taskbar_gap : 0);
     if (content_end < 0) {
         content_end = 0;
     }
     client_start = layout_panel_start(content_end, height);
     layout_clients(client_start, content_end, height);
+    tray_layout(tray_left, tray_right - tray_left, height);
     draw_clock(width, height);
 
     if (has_hovered_slot && !identity_is_present(&hovered_slot)) {

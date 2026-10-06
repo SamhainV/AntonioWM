@@ -1,10 +1,10 @@
-# AntonioWM 0.4.11 — panel unificado y menú de aplicaciones
+# AntonioWM 0.4.12 — System Tray X11/XEmbed
 
 AntonioWM es un gestor de ventanas flotante para X11, escrito desde cero en C
-con Xlib. La versión 0.4.11 conserva la compatibilidad ICCCM/EWMH, el soporte
-multimonitor y la captura silenciosa de 0.4.10, elimina la antigua barra
-superior y reúne escritorios, lanzadores, tareas, menú y reloj en un único
-panel inferior.
+con Xlib. La versión 0.4.12 conserva la compatibilidad ICCCM/EWMH, el soporte
+multimonitor, la captura silenciosa y el panel unificado de 0.4.11, y añade
+una bandeja del sistema compatible con el protocolo tradicional de
+freedesktop.org y XEmbed.
 
 El proyecto sigue priorizando código directo y comprensible. No usa un toolkit
 gráfico, un compositor ni código procedente de otros gestores de ventanas.
@@ -35,6 +35,8 @@ gráfico, un compositor ni código procedente de otros gestores de ventanas.
 - Panel inferior unificado con botón principal, escritorios, lanzadores
   configurables —icono PNG o texto—, tareas del escritorio visible y reloj
   `HH:MM` sin sondeo intensivo.
+- Bandeja X11 estándar inmediatamente a la izquierda del reloj, capaz de
+  alojar applets externos XEmbed sin convertirlos en clientes normales.
 - Menú propio Xlib/Xft con catálogo de aplicaciones instalado, categorías,
   navegación por ratón/teclado y acciones configurables de sesión/sistema.
 - `Ctrl + Mayús + Impr Pant` ejecuta una captura completa y la ofrece como
@@ -85,6 +87,32 @@ usa el comando configurado o `gdmflexiserver` cuando está disponible.
 El menú se cierra al elegir una acción, con `Escape` o al pulsar fuera. Admite
 flechas, `Inicio`, `Fin`, `Enter`, espacio, rueda y ratón. Si el contenido no
 cabe sobre el panel, permanece dentro del monitor y permite desplazamiento.
+
+## Bandeja del sistema X11/XEmbed 0.4.12
+
+- AntonioWM intenta adquirir `_NET_SYSTEM_TRAY_Sn` para su pantalla X11 y
+  anuncia el nuevo manager mediante `MANAGER` con un timestamp del servidor.
+  Si la selección ya pertenece a otro proceso, no la roba: muestra un
+  diagnóstico y continúa funcionando normalmente sin bandeja.
+- Se atiende `_NET_SYSTEM_TRAY_OPCODE` y `SYSTEM_TRAY_REQUEST_DOCK`. Sólo la
+  ventana solicitada explícitamente se aloja en un contenedor XEmbed hijo del
+  panel; los menús y popups posteriores del applet permanecen fuera del panel.
+- Cada icono recibe `XEMBED_EMBEDDED_NOTIFY` y activación XEmbed. Se respeta
+  `_XEMBED_INFO`/`XEMBED_MAPPED`, y se gestionan map, unmap, resize,
+  reparenting, destrucción y pérdida de la selección.
+- Los iconos forman un layout horizontal, centrado verticalmente y limitado a
+  22 px por defecto, con 3 px de separación. El espacio de tareas se recalcula
+  al aparecer o desaparecer iconos y el reloj conserva siempre su área.
+- Los iconos y sus contenedores no son `Client`: no aparecen en la taskbar,
+  `Alt + Tab`, escritorios virtuales ni `_NET_CLIENT_LIST`. Clic, rueda y demás
+  eventos llegan a la ventana real del applet.
+- Al cerrar o reiniciar AntonioWM, los iconos vivos se devuelven al root. El
+  nuevo manager vuelve a anunciarse para que los applets puedan solicitar el
+  acoplamiento otra vez, sin copias duplicadas ni huecos fantasma.
+
+La implementación es exclusivamente el System Tray tradicional de X11 y
+XEmbed. StatusNotifierItem/SNI y D-Bus quedan deliberadamente fuera de esta
+versión.
 
 ## Pulido visual 0.4.5
 
@@ -287,6 +315,15 @@ sudo apt install maim xclip
 Sólo son necesarias para `Ctrl + Mayús + Impr Pant`; AntonioWM puede arrancar
 y utilizarse normalmente sin ellas.
 
+Los applets de bandeja también son opcionales. En Debian pueden instalarse,
+por ejemplo, con:
+
+```sh
+sudo apt install volumeicon-alsa network-manager-gnome
+```
+
+AntonioWM no depende de esos paquetes para compilar ni arrancar.
+
 El binario enlaza con Xlib, XRandR, Xinerama, Xft y zlib; esta última se usa
 únicamente para descomprimir PNG. Xinerama proporciona el fallback de
 topología cuando RandR 1.5 no está disponible. `xdotool`, `x11-utils`,
@@ -310,7 +347,7 @@ La versión puede consultarse sin conectarse al servidor X:
 ./antoniowm -v
 ```
 
-Ambas órdenes imprimen `AntonioWM 0.4.11-panel-menu` y terminan correctamente
+Ambas órdenes imprimen `AntonioWM 0.4.12-systray` y terminan correctamente
 aunque no exista `DISPLAY` o ya haya otro gestor controlando la pantalla.
 
 Objetivos disponibles:
@@ -324,6 +361,7 @@ make desktop-entries-smoke # sólo descubrimiento/parsing de aplicaciones
 make panel-menu-smoke # sólo panel único, menú, acciones y reinicio
 make multimonitor-smoke # sólo geometría RandR y resize por frame
 make screenshot-smoke  # sólo captura, CLIPBOARD, locks y procesos hijos
+make systray-smoke     # sólo selección, XEmbed, layout y ciclo de iconos
 make audit-smoke # carga, cierres concurrentes y limpieza/reinicio del WM
 make clean
 ```
@@ -345,6 +383,8 @@ DISPLAY=:1 thunar &
 DISPLAY=:1 mousepad &
 DISPLAY=:1 firefox &
 DISPLAY=:1 gimp &
+DISPLAY=:1 volumeicon &
+DISPLAY=:1 nm-applet &
 ```
 
 Todo proceso con `DISPLAY=:1` queda dentro del servidor anidado y no interfiere
@@ -475,7 +515,7 @@ versión aún requieren recompilar.
 ## Pruebas automáticas
 
 `make smoke` empieza con una prueba unitaria del parser `.desktop` y después
-ejecuta seis suites dentro de Xephyr. `smoke_xephyr.sh` cubre las regresiones
+ejecuta siete suites dentro de Xephyr. `smoke_xephyr.sh` cubre las regresiones
 de FASES 1–3: reparenting, decoraciones, cascada, foco, teclado, ratón, resize,
 maximización/restauración, fullscreen, minimización, escritorios, panel,
 cierre y reinicio. `smoke_phase4_xephyr.sh` añade:
@@ -544,6 +584,21 @@ override, orden, categorías, `Hidden`, `NoDisplay`, `TryExec`, iconos,
   comandos configurados de cambio de usuario;
 - confirmaciones internas de reinicio/apagado y ausencia de procesos zombie.
 
+`smoke_systray_xephyr.sh` usa un applet XEmbed externo instrumentado y
+comprueba:
+
+- adquisición de `_NET_SYSTEM_TRAY_Sn`, anuncio `MANAGER`, orientación,
+  visual y negativa a robar una selección ya ocupada;
+- icono iniciado antes y después del WM, varios iconos, layout, límite de
+  tamaño y actualización por `_XEMBED_INFO`;
+- clic, rueda y un popup real que permanece como ventana root en lugar de ser
+  reparentado al panel;
+- exclusión de `_NET_CLIENT_LIST`, taskbar, Alt+Tab y escritorios;
+- cierre normal, SIGKILL, reinicio del applet, doce ciclos de alta/baja y tres
+  reinicios consecutivos del WM sin duplicados ni huecos fantasma;
+- coexistencia con maximización, fullscreen, restauración exacta y cambio de
+  escritorio.
+
 La suite usa sustitutos instrumentados de `maim`/`xclip`, porque esas dos
 herramientas opcionales no están instaladas en el entorno de pruebas. El
 sustituto de `xclip` implementa el protocolo de selección X11 y permanece vivo
@@ -555,7 +610,8 @@ movimiento y resize, coordenadas EWMH extremas, iconificación y restauración,
 estados, escritorios, reinicio bajo carga y terminación limpia con `SIGTERM`.
 Puede ejecutarse con `make audit-smoke`.
 
-Las pantallas predeterminadas son `:98`, `:97`, `:95`, `:93`, `:92` y `:91`.
+Las pantallas predeterminadas son `:98`, `:97`, `:95`, `:93`, `:92` y `:91`;
+la prueba systray reutiliza `:93` de forma secuencial.
 Pueden
 cambiarse así:
 
@@ -564,7 +620,8 @@ ANTONIOWM_TEST_DISPLAY=:77 ANTONIOWM_PHASE4_TEST_DISPLAY=:76 \
 ANTONIOWM_TASKBAR_TEST_DISPLAY=:75 \
 ANTONIOWM_MULTIMONITOR_TEST_DISPLAY=:74 \
 ANTONIOWM_SCREENSHOT_TEST_DISPLAY=:73 \
-ANTONIOWM_PANEL_MENU_TEST_DISPLAY=:72 make smoke
+ANTONIOWM_PANEL_MENU_TEST_DISPLAY=:72 \
+ANTONIOWM_TRAY_TEST_DISPLAY=:71 make smoke
 ```
 
 En un contenedor donde xterm no pueda crear un pseudo-terminal, la primera
@@ -670,6 +727,13 @@ por monitor volvieron a pasar juntos. Los comandos destructivos se probaron
 con sustitutos instrumentados: AntonioWM no ejecutó reinicio ni apagado reales
 en el entorno de pruebas.
 
+Para 0.4.12 se repitió toda la regresión de FASES 1–4, taskbar, RandR,
+screenshot y panel/menú, y se añadió la suite XEmbed descrita arriba. ASan y
+UBSan pasaron tanto esa suite como el estrés de 24 clientes, cierres durante
+move/resize, reinicio y SIGTERM. El entorno Work no contiene `volumeicon` ni
+`nm-applet`; por ello su prueba visual real queda para Debian 13, mientras que
+el protocolo y su ciclo de vida se validaron con el applet instrumentado.
+
 ## Configuración
 
 Los valores de fábrica están en `config.h`: terminal; captura; panel; menú;
@@ -699,6 +763,7 @@ AntonioWM/
 ├── src/clock.c        Reloj compartido y cálculo del siguiente minuto
 ├── src/taskbar.c      Panel único, menú, escritorios, launchers y tareas
 ├── src/menu.c         Menú nativo, navegación y acciones del sistema
+├── src/tray.c         Selección System Tray, XEmbed, iconos y layout
 ├── src/desktop_entries.c Descubrimiento y parser de archivos .desktop
 ├── src/runtime_config.c Parser acotado del archivo de usuario
 ├── src/icon.c         Decodificación PNG y dibujo XImage
@@ -709,7 +774,7 @@ AntonioWM/
 └── README.md
 ```
 
-## Límites deliberados de la versión 0.4.11
+## Límites deliberados de la versión 0.4.12
 
 - Fullscreen ocupa por defecto un único monitor. Aún no se implementa la
   solicitud opcional `_NET_WM_FULLSCREEN_MONITORS` para abarcar varios
@@ -729,5 +794,8 @@ AntonioWM/
   temas no hicolor.
 - La compatibilidad ICCCM/EWMH es deliberadamente razonable, no una afirmación
   de cobertura total de todas las extensiones posibles.
+- La bandeja implementa el protocolo X11/XEmbed tradicional. No implementa
+  StatusNotifierItem/SNI, AppIndicator ni D-Bus; los applets exclusivamente
+  SNI necesitan un puente externo o una versión futura.
 - No se instala todavía como sesión de un display manager. La instalación en
   `/usr/local` y la integración de sesión continúan reservadas para la FASE 5.

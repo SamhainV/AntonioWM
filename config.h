@@ -10,7 +10,7 @@
  */
 
 #define AWM_NAME "AntonioWM"
-#define AWM_VERSION "0.4.11-panel-menu"
+#define AWM_VERSION "0.4.12-systray"
 
 /* Commands */
 /* Command line; ANTONIOWM_TERMINAL can override it at runtime. */
@@ -29,6 +29,10 @@
 #define AWM_TASKBAR_PADDING 4
 #define AWM_TASKBAR_LAUNCHER_WIDTH 78
 #define AWM_TASKBAR_WINDOW_MAX_WIDTH 200
+
+/* Traditional X11 System Tray/XEmbed geometry inside the bottom panel. */
+#define AWM_TRAY_ICON_MAX_SIZE 22
+#define AWM_TRAY_ICON_GAP 3
 
 #define AWM_LAUNCHER_CHROME_LABEL "Chrome"
 #define AWM_LAUNCHER_CHROME_COMMAND "google-chrome"

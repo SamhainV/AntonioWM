@@ -236,6 +236,9 @@ void events_dispatch(XEvent *event)
         refresh_screen_layout(true);
         return;
     }
+    if (tray_handle_event(event)) {
+        return;
+    }
 
     switch (event->type) {
     case MapRequest:

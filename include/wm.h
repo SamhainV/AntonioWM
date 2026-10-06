@@ -551,6 +551,13 @@ bool taskbar_handle_enter(const XCrossingEvent *event);
 bool taskbar_handle_leave(const XCrossingEvent *event);
 void taskbar_handle_expose(const XExposeEvent *event);
 
+/* tray.c */
+void tray_initialize(void);
+void tray_cleanup(void);
+int tray_preferred_width(int panel_height);
+void tray_layout(int x, int width, int panel_height);
+bool tray_handle_event(XEvent *event);
+
 /* menu.c */
 bool menu_initialize(void);
 void menu_cleanup(void);

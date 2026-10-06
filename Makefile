@@ -17,7 +17,8 @@ TARGET := antoniowm
 SOURCES := src/main.c src/events.c src/client.c src/keyboard.c src/mouse.c \
            src/desktop.c src/ewmh.c src/hints.c src/stacking.c src/draw.c \
            src/decor.c src/clock.c src/taskbar.c src/menu.c \
-           src/desktop_entries.c src/runtime_config.c src/icon.c src/monitor.c
+           src/tray.c src/desktop_entries.c src/runtime_config.c src/icon.c \
+           src/monitor.c
 OBJECTS := $(patsubst src/%.c,build/%.o,$(SOURCES))
 DEPENDENCIES := $(OBJECTS:.o=.d)
 TEST_CLIENT := tests/awm-test-client
@@ -25,9 +26,10 @@ TEST_EWMH := tests/awm-ewmh-request
 TEST_PIXEL := tests/awm-pixel-probe
 TEST_CLIPBOARD := tests/awm-clipboard-helper
 TEST_DESKTOP_ENTRIES := tests/awm-desktop-entries-test
+TEST_TRAY := tests/awm-tray-client
 
 .PHONY: all clean debug check test-client smoke audit-smoke multimonitor-smoke \
-	screenshot-smoke desktop-entries-smoke panel-menu-smoke
+	screenshot-smoke desktop-entries-smoke panel-menu-smoke systray-smoke
 
 all: $(TARGET)
 
@@ -47,7 +49,7 @@ check:
 	$(MAKE) CFLAGS="-O2 -std=c11 -Wall -Wextra -Wpedantic -Wshadow -Wformat=2 -Wundef -Wpointer-arith -Wstrict-prototypes -Wmissing-prototypes -Werror" all
 
 test-client: $(TEST_CLIENT) $(TEST_EWMH) $(TEST_PIXEL) $(TEST_CLIPBOARD) \
-	$(TEST_DESKTOP_ENTRIES)
+	$(TEST_DESKTOP_ENTRIES) $(TEST_TRAY)
 
 $(TEST_CLIENT): tests/test_client.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ $< $(LDLIBS)
@@ -64,6 +66,9 @@ $(TEST_CLIPBOARD): tests/clipboard_helper.c
 $(TEST_DESKTOP_ENTRIES): tests/desktop_entries_test.c src/desktop_entries.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
+$(TEST_TRAY): tests/tray_client.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ $< -lX11
+
 smoke: all test-client
 	./tests/test_desktop_entries.sh
 	./tests/smoke_xephyr.sh
@@ -72,6 +77,7 @@ smoke: all test-client
 	./tests/smoke_multimonitor_resize_xephyr.sh
 	./tests/smoke_screenshot_xephyr.sh
 	./tests/smoke_panel_menu_xephyr.sh
+	./tests/smoke_systray_xephyr.sh
 
 desktop-entries-smoke: $(TEST_DESKTOP_ENTRIES)
 	./tests/test_desktop_entries.sh
@@ -85,11 +91,14 @@ multimonitor-smoke: all test-client
 screenshot-smoke: all test-client
 	./tests/smoke_screenshot_xephyr.sh
 
+systray-smoke: all test-client
+	./tests/smoke_systray_xephyr.sh
+
 audit-smoke: all test-client
 	./tests/audit_stress_xephyr.sh
 
 clean:
 	rm -rf build $(TARGET) $(TEST_CLIENT) $(TEST_EWMH) $(TEST_PIXEL) \
-		$(TEST_CLIPBOARD) $(TEST_DESKTOP_ENTRIES)
+		$(TEST_CLIPBOARD) $(TEST_DESKTOP_ENTRIES) $(TEST_TRAY)
 
 -include $(DEPENDENCIES)
