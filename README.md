@@ -1,10 +1,9 @@
-# AntonioWM 0.4.12 — System Tray X11/XEmbed
+# AntonioWM 0.4.13 — Autostart configurable
 
 AntonioWM es un gestor de ventanas flotante para X11, escrito desde cero en C
-con Xlib. La versión 0.4.12 conserva la compatibilidad ICCCM/EWMH, el soporte
-multimonitor, la captura silenciosa y el panel unificado de 0.4.11, y añade
-una bandeja del sistema compatible con el protocolo tradicional de
-freedesktop.org y XEmbed.
+con Xlib. La versión 0.4.13 conserva íntegramente la compatibilidad ICCCM/EWMH,
+el soporte multimonitor, la captura silenciosa, el panel unificado y la bandeja
+X11/XEmbed de 0.4.12, y añade autostart configurable una sola vez por sesión.
 
 El proyecto sigue priorizando código directo y comprensible. No usa un toolkit
 gráfico, un compositor ni código procedente de otros gestores de ventanas.
@@ -37,6 +36,8 @@ gráfico, un compositor ni código procedente de otros gestores de ventanas.
   `HH:MM` sin sondeo intensivo.
 - Bandeja X11 estándar inmediatamente a la izquierda del reloj, capaz de
   alojar applets externos XEmbed sin convertirlos en clientes normales.
+- Autostart desde el archivo de usuario para applets y programas auxiliares,
+  sin duplicarlos al reiniciar internamente AntonioWM.
 - Menú propio Xlib/Xft con catálogo de aplicaciones instalado, categorías,
   navegación por ratón/teclado y acciones configurables de sesión/sistema.
 - `Ctrl + Mayús + Impr Pant` ejecuta una captura completa y la ofrece como
@@ -113,6 +114,32 @@ cabe sobre el panel, permanece dentro del monitor y permite desplazamiento.
 La implementación es exclusivamente el System Tray tradicional de X11 y
 XEmbed. StatusNotifierItem/SNI y D-Bus quedan deliberadamente fuera de esta
 versión.
+
+## Autostart configurable 0.4.13
+
+El archivo de usuario admite hasta 16 comandos independientes. `count`
+determina cuántas posiciones se consideran activas:
+
+```ini
+autostart.count=2
+autostart.1.command=volumeicon
+autostart.2.command=nm-applet
+```
+
+Los comandos se lanzan mediante `/bin/sh -c` después de que AntonioWM haya
+adquirido el root y la selección del System Tray. Cada uno se ejecuta en un
+proceso independiente y AntonioWM no espera su terminación. Un índice ausente,
+un comando vacío o un ejecutable inexistente se diagnostican u omiten sin
+impedir que el gestor arranque. `autostart.count=0`, la ausencia de las claves
+o la inexistencia del archivo de configuración desactivan el autostart.
+
+El autostart se ejecuta únicamente al comenzar un proceso nuevo de AntonioWM.
+Antes de `exec` en `Super + Mayús + R`, el gestor guarda un marcador privado
+con su PID; como `exec` conserva ese PID, la nueva imagen reconoce el reinicio,
+consume el marcador y no vuelve a lanzar comandos. Un marcador heredado o
+obsoleto con otro PID no puede suprimir un inicio normal. Así, un `volumeicon`
+existente permanece como una sola instancia y vuelve a solicitar su dock al
+System Tray recién creado.
 
 ## Pulido visual 0.4.5
 
@@ -347,7 +374,7 @@ La versión puede consultarse sin conectarse al servidor X:
 ./antoniowm -v
 ```
 
-Ambas órdenes imprimen `AntonioWM 0.4.12-systray` y terminan correctamente
+Ambas órdenes imprimen `AntonioWM 0.4.13-autostart` y terminan correctamente
 aunque no exista `DISPLAY` o ya haya otro gestor controlando la pantalla.
 
 Objetivos disponibles:
@@ -362,6 +389,7 @@ make panel-menu-smoke # sólo panel único, menú, acciones y reinicio
 make multimonitor-smoke # sólo geometría RandR y resize por frame
 make screenshot-smoke  # sólo captura, CLIPBOARD, locks y procesos hijos
 make systray-smoke     # sólo selección, XEmbed, layout y ciclo de iconos
+make autostart-smoke   # sólo parser, procesos, reinicios y tray de autostart
 make audit-smoke # carga, cierres concurrentes y limpieza/reinicio del WM
 make clean
 ```
@@ -449,6 +477,10 @@ terminal=xfce4-terminal
 screenshot.command=maim | xclip -selection clipboard -t image/png -i
 focus_follows_mouse=false
 
+autostart.count=2
+autostart.1.command=volumeicon
+autostart.2.command=nm-applet
+
 system.logout.command=
 system.switch_user.command=
 system.reboot.command=systemctl reboot
@@ -499,6 +531,12 @@ reinicia AntonioWM y vuelve a leer el archivo sin cerrar las aplicaciones.
 `screenshot.command` puede contener una tubería u otro comando shell; si se
 omite, se utiliza el comando `maim | xclip ...` mostrado anteriormente.
 
+`autostart.count` acepta valores entre 0 y 16. Sólo se recorren los índices
+`1..count`; definir `autostart.N.command` no aumenta implícitamente la cuenta.
+Los comandos se leen de nuevo al reiniciar, pero se ejecutan sólo al inicio de
+la sesión: `Super + Mayús + R` nunca los relanza. Para aplicar cambios de
+autostart hay que terminar AntonioWM e iniciar una sesión/proceso nuevo.
+
 Las cuatro claves `system.*.command` controlan las acciones del menú. Un
 `system.logout.command` vacío usa la terminación limpia de AntonioWM, que
 reparenta los clientes y sale de la sesión. Un `system.switch_user.command`
@@ -515,7 +553,7 @@ versión aún requieren recompilar.
 ## Pruebas automáticas
 
 `make smoke` empieza con una prueba unitaria del parser `.desktop` y después
-ejecuta siete suites dentro de Xephyr. `smoke_xephyr.sh` cubre las regresiones
+ejecuta ocho suites dentro de Xephyr. `smoke_xephyr.sh` cubre las regresiones
 de FASES 1–3: reparenting, decoraciones, cascada, foco, teclado, ratón, resize,
 maximización/restauración, fullscreen, minimización, escritorios, panel,
 cierre y reinicio. `smoke_phase4_xephyr.sh` añade:
@@ -599,6 +637,15 @@ comprueba:
 - coexistencia con maximización, fullscreen, restauración exacta y cambio de
   escritorio.
 
+`smoke_autostart_xephyr.sh` comprueba:
+
+- archivo ausente, ausencia de claves, `count=0` y configuración mal formada;
+- varios comandos independientes, terminación inmediata, proceso persistente,
+  índice ausente, comando vacío y comando inexistente;
+- applet XEmbed iniciado automáticamente, dock inicial y redocking;
+- tres reinicios internos consecutivos sin relanzar comandos ni duplicar el
+  applet, ausencia de zombis y cierre limpio del WM sin matar auxiliares.
+
 La suite usa sustitutos instrumentados de `maim`/`xclip`, porque esas dos
 herramientas opcionales no están instaladas en el entorno de pruebas. El
 sustituto de `xclip` implementa el protocolo de selección X11 y permanece vivo
@@ -610,8 +657,8 @@ movimiento y resize, coordenadas EWMH extremas, iconificación y restauración,
 estados, escritorios, reinicio bajo carga y terminación limpia con `SIGTERM`.
 Puede ejecutarse con `make audit-smoke`.
 
-Las pantallas predeterminadas son `:98`, `:97`, `:95`, `:93`, `:92` y `:91`;
-la prueba systray reutiliza `:93` de forma secuencial.
+Las pantallas predeterminadas son `:98`, `:97`, `:95`, `:93`, `:92`, `:91`
+y `:94`; la prueba systray reutiliza `:93` de forma secuencial.
 Pueden
 cambiarse así:
 
@@ -621,7 +668,8 @@ ANTONIOWM_TASKBAR_TEST_DISPLAY=:75 \
 ANTONIOWM_MULTIMONITOR_TEST_DISPLAY=:74 \
 ANTONIOWM_SCREENSHOT_TEST_DISPLAY=:73 \
 ANTONIOWM_PANEL_MENU_TEST_DISPLAY=:72 \
-ANTONIOWM_TRAY_TEST_DISPLAY=:71 make smoke
+ANTONIOWM_TRAY_TEST_DISPLAY=:71 \
+ANTONIOWM_AUTOSTART_TEST_DISPLAY=:70 make smoke
 ```
 
 En un contenedor donde xterm no pueda crear un pseudo-terminal, la primera
@@ -734,6 +782,15 @@ move/resize, reinicio y SIGTERM. El entorno Work no contiene `volumeicon` ni
 `nm-applet`; por ello su prueba visual real queda para Debian 13, mientras que
 el protocolo y su ciclo de vida se validaron con el applet instrumentado.
 
+Para 0.4.13 se volvió a compilar todo con `-Werror` y se ejecutaron las ocho
+suites: FASES 1–4, configuración/taskbar, RandR y resize, screenshot,
+panel/menú, System Tray y autostart. La prueba nueva ejecutó comandos cortos y
+persistentes, toleró un comando inexistente, alojó un applet XEmbed y comprobó
+tres reinicios consecutivos sin duplicados. ASan y UBSan pasaron esa prueba y
+el estrés de 24 clientes sin diagnósticos. Work no incluye `volumeicon` ni
+`nm-applet`; la integración real conserva la ruta XEmbed validada en 0.4.12 y
+se cubrió aquí con el applet instrumentado.
+
 ## Configuración
 
 Los valores de fábrica están en `config.h`: terminal; captura; panel; menú;
@@ -764,6 +821,7 @@ AntonioWM/
 ├── src/taskbar.c      Panel único, menú, escritorios, launchers y tareas
 ├── src/menu.c         Menú nativo, navegación y acciones del sistema
 ├── src/tray.c         Selección System Tray, XEmbed, iconos y layout
+├── src/autostart.c    Inicio por sesión y marcador del reinicio interno
 ├── src/desktop_entries.c Descubrimiento y parser de archivos .desktop
 ├── src/runtime_config.c Parser acotado del archivo de usuario
 ├── src/icon.c         Decodificación PNG y dibujo XImage
@@ -774,7 +832,7 @@ AntonioWM/
 └── README.md
 ```
 
-## Límites deliberados de la versión 0.4.12
+## Límites deliberados de la versión 0.4.13
 
 - Fullscreen ocupa por defecto un único monitor. Aún no se implementa la
   solicitud opcional `_NET_WM_FULLSCREEN_MONITORS` para abarcar varios

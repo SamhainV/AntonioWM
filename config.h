@@ -10,7 +10,7 @@
  */
 
 #define AWM_NAME "AntonioWM"
-#define AWM_VERSION "0.4.12-systray"
+#define AWM_VERSION "0.4.13-autostart"
 
 /* Commands */
 /* Command line; ANTONIOWM_TERMINAL can override it at runtime. */

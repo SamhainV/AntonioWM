@@ -18,7 +18,7 @@ SOURCES := src/main.c src/events.c src/client.c src/keyboard.c src/mouse.c \
            src/desktop.c src/ewmh.c src/hints.c src/stacking.c src/draw.c \
            src/decor.c src/clock.c src/taskbar.c src/menu.c \
            src/tray.c src/desktop_entries.c src/runtime_config.c src/icon.c \
-           src/monitor.c
+           src/monitor.c src/autostart.c
 OBJECTS := $(patsubst src/%.c,build/%.o,$(SOURCES))
 DEPENDENCIES := $(OBJECTS:.o=.d)
 TEST_CLIENT := tests/awm-test-client
@@ -29,7 +29,8 @@ TEST_DESKTOP_ENTRIES := tests/awm-desktop-entries-test
 TEST_TRAY := tests/awm-tray-client
 
 .PHONY: all clean debug check test-client smoke audit-smoke multimonitor-smoke \
-	screenshot-smoke desktop-entries-smoke panel-menu-smoke systray-smoke
+	screenshot-smoke desktop-entries-smoke panel-menu-smoke systray-smoke \
+	autostart-smoke
 
 all: $(TARGET)
 
@@ -78,6 +79,7 @@ smoke: all test-client
 	./tests/smoke_screenshot_xephyr.sh
 	./tests/smoke_panel_menu_xephyr.sh
 	./tests/smoke_systray_xephyr.sh
+	./tests/smoke_autostart_xephyr.sh
 
 desktop-entries-smoke: $(TEST_DESKTOP_ENTRIES)
 	./tests/test_desktop_entries.sh
@@ -93,6 +95,9 @@ screenshot-smoke: all test-client
 
 systray-smoke: all test-client
 	./tests/smoke_systray_xephyr.sh
+
+autostart-smoke: all test-client
+	./tests/smoke_autostart_xephyr.sh
 
 audit-smoke: all test-client
 	./tests/audit_stress_xephyr.sh

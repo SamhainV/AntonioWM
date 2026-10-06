@@ -186,6 +186,7 @@ bool wm_initialize(int argc, char **argv)
 {
     struct sigaction child_action;
     struct sigaction stop_action;
+    bool internal_restart = autostart_consume_restart_marker();
 
     memset(&wm, 0, sizeof(wm));
     wm.argc = argc;
@@ -346,6 +347,14 @@ bool wm_initialize(int argc, char **argv)
             wm.screen_width,
             wm.screen_height);
     fflush(stdout);
+    if (internal_restart) {
+        fprintf(stdout,
+                "%s: reinicio interno detectado; se omite el autostart\n",
+                AWM_NAME);
+        fflush(stdout);
+    } else {
+        autostart_run();
+    }
     return true;
 }
 
@@ -430,6 +439,14 @@ void wm_restart(void)
 {
     char **arguments = wm.argv;
     const char *program = arguments[0];
+
+    if (!autostart_prepare_restart()) {
+        fprintf(stderr,
+                "%s: no se pudo preparar un reinicio seguro; "
+                "el gestor continuara ejecutandose\n",
+                AWM_NAME);
+        return;
+    }
 
     fprintf(stdout, "%s: reiniciando sin cerrar las aplicaciones...\n", AWM_NAME);
     fflush(stdout);

@@ -322,6 +322,31 @@ static bool apply_launcher_value(const char *key,
     return true;
 }
 
+static bool apply_autostart_value(const char *key,
+                                  const char *value,
+                                  unsigned long line_number)
+{
+    size_t index;
+    const char *field;
+
+    if (!parse_indexed_key(key,
+                           "autostart.",
+                           AWM_RUNTIME_MAX_AUTOSTART,
+                           &index,
+                           &field)) {
+        return false;
+    }
+    if (strcmp(field, "command") != 0) {
+        return false;
+    }
+    (void)copy_text(wm.config.autostart_commands[index],
+                    sizeof(wm.config.autostart_commands[index]),
+                    value,
+                    key,
+                    line_number);
+    return true;
+}
+
 static bool apply_desktop_value(const char *key,
                                 const char *value,
                                 unsigned long line_number)
@@ -428,13 +453,23 @@ static void apply_value(const char *key,
         } else {
             invalid_value(key, line_number);
         }
+    } else if (strcmp(key, "autostart.count") == 0) {
+        if (parse_number(value,
+                         0L,
+                         (long)AWM_RUNTIME_MAX_AUTOSTART,
+                         &number)) {
+            wm.config.autostart_count = (size_t)number;
+        } else {
+            invalid_value(key, line_number);
+        }
     } else if (strcmp(key, "focus_follows_mouse") == 0) {
         if (parse_boolean(value, &boolean)) {
             wm.config.focus_follows_mouse = boolean;
         } else {
             invalid_value(key, line_number);
         }
-    } else if (apply_launcher_value(key, value, directory, line_number) ||
+    } else if (apply_autostart_value(key, value, line_number) ||
+               apply_launcher_value(key, value, directory, line_number) ||
                apply_desktop_value(key, value, line_number)) {
         return;
     } else {

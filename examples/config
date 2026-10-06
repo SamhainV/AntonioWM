@@ -1,9 +1,14 @@
-# AntonioWM 0.4.11: ejemplo de configuracion de usuario.
+# AntonioWM 0.4.13: ejemplo de configuracion de usuario.
 # Copiar como ~/.config/antoniowm/config y adaptar las rutas de iconos.
 
 terminal=xfce4-terminal
 screenshot.command=maim | xclip -selection clipboard -t image/png -i
 focus_follows_mouse=false
+
+# Se ejecuta una vez al comenzar la sesion, no al usar Super+Mayus+R.
+autostart.count=2
+autostart.1.command=volumeicon
+autostart.2.command=nm-applet
 
 # Vacio: salida limpia de AntonioWM. En GDM vuelve al gestor de sesiones.
 system.logout.command=

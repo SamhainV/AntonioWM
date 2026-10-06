@@ -10,6 +10,7 @@
 #include <stddef.h>
 
 #define AWM_RUNTIME_MAX_LAUNCHERS 16U
+#define AWM_RUNTIME_MAX_AUTOSTART 16U
 #define AWM_RUNTIME_MAX_DESKTOPS 16U
 #define AWM_RUNTIME_LABEL_LENGTH 64U
 #define AWM_RUNTIME_COMMAND_LENGTH 512U
@@ -34,6 +35,9 @@ typedef struct {
     int taskbar_gap;
     int taskbar_padding;
     bool focus_follows_mouse;
+    size_t autostart_count;
+    char autostart_commands[AWM_RUNTIME_MAX_AUTOSTART]
+                           [AWM_RUNTIME_COMMAND_LENGTH];
     size_t launcher_count;
     LauncherConfig launchers[AWM_RUNTIME_MAX_LAUNCHERS];
     char desktop_names[AWM_RUNTIME_MAX_DESKTOPS][AWM_RUNTIME_LABEL_LENGTH];
@@ -371,6 +375,11 @@ bool monitor_handle_event(XEvent *event);
 
 /* runtime_config.c */
 void runtime_config_load(void);
+
+/* autostart.c */
+bool autostart_consume_restart_marker(void);
+bool autostart_prepare_restart(void);
+void autostart_run(void);
 
 /* desktop_entries.c */
 bool desktop_entries_initialize(void);
