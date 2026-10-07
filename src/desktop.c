@@ -163,6 +163,7 @@ void desktop_switch(unsigned int desktop)
     if (desktop >= wm.desktop_count || desktop == wm.current_desktop) {
         return;
     }
+    task_preview_cancel();
 
     old_desktop = wm.current_desktop;
     for (client = wm.clients; client != NULL; client = client->next) {
@@ -214,6 +215,7 @@ void desktop_move_client(Client *client, unsigned int desktop)
     if (client == NULL || desktop >= wm.desktop_count || client->desktop == desktop) {
         return;
     }
+    task_preview_client_state_changed(client);
 
     was_focused = wm.focused == client;
     move_client_group(client, desktop);

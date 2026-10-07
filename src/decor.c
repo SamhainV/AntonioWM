@@ -470,6 +470,7 @@ void decor_apply_geometry(Client *client)
     if (client == NULL || client->frame == None) {
         return;
     }
+    task_preview_client_invalidated(client);
 
     if (client->width < 1) {
         client->width = 1;
@@ -571,6 +572,7 @@ void decor_move(Client *client, int x, int y)
     if (client == NULL || client->frame == None) {
         return;
     }
+    task_preview_client_invalidated(client);
     client->x = protocol_position(x);
     client->y = protocol_position(y);
     XMoveWindow(wm.display, client->frame, client->x, client->y);

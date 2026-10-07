@@ -16,6 +16,7 @@ typedef struct {
     bool urgent;
     bool initial_iconic;
     bool override_redirect;
+    bool red_background;
     int min_width;
     int min_height;
     int max_width;
@@ -109,6 +110,8 @@ static void parse_options(int argc, char **argv, Options *options)
             options->initial_iconic = true;
         } else if (strcmp(argv[index], "--override") == 0) {
             options->override_redirect = true;
+        } else if (strcmp(argv[index], "--red") == 0) {
+            options->red_background = true;
         } else if (strcmp(argv[index], "--min") == 0 && index + 1 < argc) {
             (void)parse_pair(argv[++index],
                              &options->min_width,
@@ -294,6 +297,21 @@ int main(int argc, char **argv)
     screen = DefaultScreen(display);
     root = RootWindow(display, screen);
     memset(&attributes, 0, sizeof(attributes));
+    if (options.red_background) {
+        XColor exact;
+        XColor screen_color;
+
+        if (XAllocNamedColor(display,
+                             DefaultColormap(display, screen),
+                             "#d02020",
+                             &screen_color,
+                             &exact) != 0) {
+            attributes.background_pixel = screen_color.pixel;
+        } else {
+            attributes.background_pixel = WhitePixel(display, screen);
+        }
+        attribute_mask |= CWBackPixel;
+    }
     if (options.override_redirect) {
         attributes.override_redirect = True;
         attribute_mask |= CWOverrideRedirect;

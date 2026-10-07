@@ -10,7 +10,7 @@
  */
 
 #define AWM_NAME "AntonioWM"
-#define AWM_VERSION "0.4.13-autostart"
+#define AWM_VERSION "0.4.14-task-preview"
 
 /* Commands */
 /* Command line; ANTONIOWM_TERMINAL can override it at runtime. */
@@ -29,6 +29,14 @@
 #define AWM_TASKBAR_PADDING 4
 #define AWM_TASKBAR_LAUNCHER_WIDTH 78
 #define AWM_TASKBAR_WINDOW_MAX_WIDTH 200
+
+/* Delayed live previews for task buttons (client content, not decorations). */
+#define AWM_TASKBAR_PREVIEW_ENABLED 1
+#define AWM_TASKBAR_PREVIEW_DELAY 350U
+#define AWM_TASKBAR_PREVIEW_WIDTH 320U
+#define AWM_TASKBAR_PREVIEW_HEIGHT 200U
+#define AWM_TASKBAR_PREVIEW_PADDING 6
+#define AWM_TASKBAR_PREVIEW_BORDER_WIDTH 1U
 
 /* Traditional X11 System Tray/XEmbed geometry inside the bottom panel. */
 #define AWM_TRAY_ICON_MAX_SIZE 22

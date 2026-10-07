@@ -1,4 +1,4 @@
-# AntonioWM 0.4.13: ejemplo de configuracion de usuario.
+# AntonioWM 0.4.14: ejemplo de configuracion de usuario.
 # Copiar como ~/.config/antoniowm/config y adaptar las rutas de iconos.
 
 terminal=xfce4-terminal
@@ -21,6 +21,10 @@ taskbar.enabled=true
 taskbar.height=30
 taskbar.gap=4
 taskbar.padding=4
+taskbar.preview=true
+taskbar.preview_delay=350
+taskbar.preview_width=320
+taskbar.preview_height=200
 taskbar.launcher_count=4
 
 launcher.1.label=Chrome

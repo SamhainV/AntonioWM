@@ -77,6 +77,10 @@ static void load_defaults(void)
     wm.config.taskbar_height = AWM_TASKBAR_HEIGHT;
     wm.config.taskbar_gap = AWM_TASKBAR_GAP;
     wm.config.taskbar_padding = AWM_TASKBAR_PADDING;
+    wm.config.taskbar_preview_enabled = AWM_TASKBAR_PREVIEW_ENABLED != 0;
+    wm.config.taskbar_preview_delay = AWM_TASKBAR_PREVIEW_DELAY;
+    wm.config.taskbar_preview_width = AWM_TASKBAR_PREVIEW_WIDTH;
+    wm.config.taskbar_preview_height = AWM_TASKBAR_PREVIEW_HEIGHT;
     wm.config.focus_follows_mouse = AWM_FOCUS_FOLLOWS_MOUSE != 0;
 
     if (count > AWM_RUNTIME_MAX_LAUNCHERS) {
@@ -441,6 +445,30 @@ static void apply_value(const char *key,
     } else if (strcmp(key, "taskbar.padding") == 0) {
         if (parse_number(value, 0L, 64L, &number)) {
             wm.config.taskbar_padding = (int)number;
+        } else {
+            invalid_value(key, line_number);
+        }
+    } else if (strcmp(key, "taskbar.preview") == 0) {
+        if (parse_boolean(value, &boolean)) {
+            wm.config.taskbar_preview_enabled = boolean;
+        } else {
+            invalid_value(key, line_number);
+        }
+    } else if (strcmp(key, "taskbar.preview_delay") == 0) {
+        if (parse_number(value, 0L, 5000L, &number)) {
+            wm.config.taskbar_preview_delay = (unsigned int)number;
+        } else {
+            invalid_value(key, line_number);
+        }
+    } else if (strcmp(key, "taskbar.preview_width") == 0) {
+        if (parse_number(value, 32L, 2048L, &number)) {
+            wm.config.taskbar_preview_width = (unsigned int)number;
+        } else {
+            invalid_value(key, line_number);
+        }
+    } else if (strcmp(key, "taskbar.preview_height") == 0) {
+        if (parse_number(value, 32L, 2048L, &number)) {
+            wm.config.taskbar_preview_height = (unsigned int)number;
         } else {
             invalid_value(key, line_number);
         }

@@ -34,6 +34,10 @@ typedef struct {
     unsigned int taskbar_height;
     int taskbar_gap;
     int taskbar_padding;
+    bool taskbar_preview_enabled;
+    unsigned int taskbar_preview_delay;
+    unsigned int taskbar_preview_width;
+    unsigned int taskbar_preview_height;
     bool focus_follows_mouse;
     size_t autostart_count;
     char autostart_commands[AWM_RUNTIME_MAX_AUTOSTART]
@@ -274,6 +278,12 @@ struct Client {
     unsigned int ignore_unmap;
     ClientPart hovered_part;
     char *title;
+
+    /* Last Composite backing pixmap retained while the client is Iconic. */
+    Pixmap preview_pixmap;
+    unsigned int preview_pixmap_width;
+    unsigned int preview_pixmap_height;
+    bool preview_redirected;
 
     Client *previous;
     Client *next;
@@ -559,6 +569,30 @@ bool taskbar_handle_motion(const XMotionEvent *event);
 bool taskbar_handle_enter(const XCrossingEvent *event);
 bool taskbar_handle_leave(const XCrossingEvent *event);
 void taskbar_handle_expose(const XExposeEvent *event);
+
+/* task_preview.c */
+bool task_preview_initialize(void);
+void task_preview_cleanup(void);
+void task_preview_close_library(void);
+void task_preview_schedule(Window client_window,
+                           int button_root_x,
+                           int button_width,
+                           int panel_root_y);
+void task_preview_reanchor(Window client_window,
+                           int button_root_x,
+                           int button_width,
+                           int panel_root_y);
+void task_preview_cancel(void);
+void task_preview_tick(void);
+int task_preview_next_timeout_ms(void);
+void task_preview_before_minimize(Client *client);
+void task_preview_client_restored(Client *client);
+void task_preview_client_invalidated(Client *client);
+void task_preview_client_state_changed(Client *client);
+void task_preview_client_title_changed(Client *client);
+void task_preview_client_forgotten(Client *client, bool destroyed);
+void task_preview_handle_expose(const XExposeEvent *event);
+void task_preview_raise(void);
 
 /* tray.c */
 void tray_initialize(void);

@@ -193,6 +193,7 @@ void stacking_enforce(void)
     free(bottom_to_top);
     free(top_to_bottom);
     ewmh_update_client_list();
+    task_preview_raise();
 }
 
 void stacking_raise(Client *client)

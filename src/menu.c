@@ -683,6 +683,7 @@ void menu_toggle(Time time)
     int pointer_result;
     int keyboard_result;
 
+    task_preview_cancel();
     if (open_menu) {
         menu_close();
         return;

@@ -348,6 +348,7 @@ void client_update_title(Client *client)
     client->title = new_title;
     decor_redraw(client);
     taskbar_update();
+    task_preview_client_title_changed(client);
 }
 
 void client_send_configure(Client *client)
@@ -694,7 +695,10 @@ void client_unmanage(Client *client, bool destroyed)
     was_focused = wm.focused == client;
 
     mouse_cancel_drag(client);
-    XUngrabButton(wm.display, AnyButton, AnyModifier, client->window);
+    task_preview_client_forgotten(client, destroyed);
+    if (!destroyed) {
+        XUngrabButton(wm.display, AnyButton, AnyModifier, client->window);
+    }
     desktop_forget_client(client);
 
     if (!destroyed) {
@@ -731,6 +735,7 @@ void client_cleanup_all(void)
     while (client != NULL) {
         Client *next = client->next;
 
+        task_preview_client_forgotten(client, false);
         XUngrabButton(wm.display, AnyButton, AnyModifier, client->window);
         restore_normal_geometry(client);
         decor_release(client, false, client->mapped);
@@ -833,6 +838,7 @@ void client_set_maximized(Client *client, bool maximized)
     if (client == NULL || client->maximized == maximized) {
         return;
     }
+    task_preview_client_invalidated(client);
 
     if (maximized) {
         if (client->fullscreen) {
@@ -887,6 +893,7 @@ void client_set_fullscreen(Client *client, bool fullscreen)
     if (client == NULL || client->fullscreen == fullscreen) {
         return;
     }
+    task_preview_client_invalidated(client);
 
     if (fullscreen) {
         client->fullscreen_x = client->x;
@@ -936,6 +943,7 @@ void client_set_minimized(Client *client, bool minimized)
     }
 
     if (minimized) {
+        task_preview_before_minimize(client);
         was_focused = wm.focused == client;
         client->minimized = true;
         client_set_wm_state(client, IconicState);
@@ -949,6 +957,7 @@ void client_set_minimized(Client *client, bool minimized)
             client_focus(replacement, true);
         }
     } else {
+        task_preview_client_restored(client);
         client->minimized = false;
         client_set_wm_state(client, NormalState);
         ewmh_update_client_state(client);
@@ -1060,6 +1069,7 @@ void client_refresh_decor(Client *client)
     if (client == NULL) {
         return;
     }
+    task_preview_client_state_changed(client);
     previous = client->decor;
     hints_refresh_transient(client);
     hints_refresh_window_type(client);

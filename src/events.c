@@ -1,6 +1,15 @@
 #include "wm.h"
 #include "config.h"
 
+static Bool destroy_for_client(Display *display, XEvent *queued, XPointer data)
+{
+    Window window = *(const Window *)data;
+
+    (void)display;
+    return queued->type == DestroyNotify &&
+           queued->xdestroywindow.window == window;
+}
+
 static void handle_map_request(const XMapRequestEvent *event)
 {
     Client *client = client_find(event->window);
@@ -17,8 +26,20 @@ static void handle_unmap_notify(const XUnmapEvent *event)
     Client *client = client_find(event->window);
 
     if (client != NULL) {
+        XEvent destroyed_event;
+
         if (client->ignore_unmap > 0U) {
             --client->ignore_unmap;
+            return;
+        }
+        /* A killed application's UnmapNotify precedes DestroyNotify.  If
+         * the latter is already queued, the client XID no longer exists. */
+        XSync(wm.display, False);
+        if (XCheckIfEvent(wm.display,
+                          &destroyed_event,
+                          destroy_for_client,
+                          (XPointer)&client->window)) {
+            client_unmanage(client, true);
             return;
         }
         client_unmanage(client, false);
@@ -166,6 +187,7 @@ static void refresh_screen_layout(bool refresh_monitors)
     XWindowAttributes attributes;
     Client *client;
 
+    task_preview_cancel();
     if (XGetWindowAttributes(wm.display, wm.root, &attributes) != 0) {
         wm.screen_width = attributes.width;
         wm.screen_height = attributes.height;
@@ -254,6 +276,7 @@ void events_dispatch(XEvent *event)
         handle_unmap_notify(&event->xunmap);
         break;
     case ButtonPress:
+        task_preview_cancel();
         if (!menu_handle_button_press(&event->xbutton) &&
             !taskbar_handle_button_press(&event->xbutton)) {
             mouse_handle_button_press(&event->xbutton);
@@ -295,6 +318,7 @@ void events_dispatch(XEvent *event)
         handle_focus_in(&event->xfocus);
         break;
     case Expose:
+        task_preview_handle_expose(&event->xexpose);
         menu_handle_expose(&event->xexpose);
         taskbar_handle_expose(&event->xexpose);
         decor_handle_expose(&event->xexpose);

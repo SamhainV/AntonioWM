@@ -300,7 +300,7 @@ bool wm_initialize(int argc, char **argv)
         wm.display = NULL;
         return false;
     }
-    if (!menu_initialize()) {
+    if (!task_preview_initialize()) {
         taskbar_cleanup();
         desktop_entries_cleanup();
         draw_cleanup();
@@ -309,6 +309,20 @@ bool wm_initialize(int argc, char **argv)
         monitor_cleanup();
         XCloseDisplay(wm.display);
         wm.display = NULL;
+        task_preview_close_library();
+        return false;
+    }
+    if (!menu_initialize()) {
+        task_preview_cleanup();
+        taskbar_cleanup();
+        desktop_entries_cleanup();
+        draw_cleanup();
+        ewmh_cleanup();
+        desktop_cleanup();
+        monitor_cleanup();
+        XCloseDisplay(wm.display);
+        wm.display = NULL;
+        task_preview_close_library();
         return false;
     }
     tray_initialize();
@@ -374,6 +388,7 @@ void wm_run(void)
         /* Keep the clock current even while clients continuously generate
          * events; clock_tick() redraws only when the minute changes. */
         clock_tick();
+        task_preview_tick();
         if (!wm.running || stop_requested != 0) {
             break;
         }
@@ -381,9 +396,18 @@ void wm_run(void)
         descriptor.fd = ConnectionNumber(wm.display);
         descriptor.events = POLLIN;
         descriptor.revents = 0;
-        result = poll(&descriptor, 1U, clock_next_timeout_ms());
+        {
+            int timeout = clock_next_timeout_ms();
+            int preview_timeout = task_preview_next_timeout_ms();
+
+            if (preview_timeout >= 0 && preview_timeout < timeout) {
+                timeout = preview_timeout;
+            }
+            result = poll(&descriptor, 1U, timeout);
+        }
         if (result == 0) {
             clock_tick();
+            task_preview_tick();
         } else if (result < 0 && errno != EINTR) {
             perror(AWM_NAME ": poll");
             wm.running = false;
@@ -400,7 +424,9 @@ void wm_cleanup(void)
     keyboard_ungrab_keys();
     menu_cleanup();
     tray_cleanup();
+    task_preview_cancel();
     client_cleanup_all();
+    task_preview_cleanup();
     taskbar_cleanup();
     desktop_entries_cleanup();
     ewmh_cleanup();
@@ -433,6 +459,7 @@ void wm_cleanup(void)
     XSync(wm.display, False);
     XCloseDisplay(wm.display);
     wm.display = NULL;
+    task_preview_close_library();
 }
 
 void wm_restart(void)

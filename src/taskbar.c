@@ -30,6 +30,38 @@ static TaskbarSlot pressed_slot;
 static bool has_hovered_slot;
 static bool has_pressed_slot;
 
+static void taskbar_preview_slot(const TaskbarSlot *slot, bool schedule)
+{
+    int panel_x;
+    int panel_y;
+    int panel_width;
+    int panel_height;
+
+    if (slot == NULL || slot->kind != TASKBAR_SLOT_CLIENT) {
+        if (schedule) {
+            task_preview_cancel();
+        }
+        return;
+    }
+    ewmh_get_taskbar_geometry(&panel_x,
+                              &panel_y,
+                              &panel_width,
+                              &panel_height);
+    (void)panel_width;
+    (void)panel_height;
+    if (schedule) {
+        task_preview_schedule(slot->client_window,
+                              panel_x + slot->x,
+                              slot->width,
+                              panel_y);
+    } else {
+        task_preview_reanchor(slot->client_window,
+                              panel_x + slot->x,
+                              slot->width,
+                              panel_y);
+    }
+}
+
 static int minimum_int(int first, int second)
 {
     return first < second ? first : second;
@@ -104,16 +136,16 @@ static bool same_identity(const TaskbarSlot *first, const TaskbarSlot *second)
     return first->client_window == second->client_window;
 }
 
-static bool identity_is_present(const TaskbarSlot *identity)
+static const TaskbarSlot *slot_by_identity(const TaskbarSlot *identity)
 {
     size_t index;
 
     for (index = 0U; index < slot_count; ++index) {
         if (same_identity(identity, &slots[index])) {
-            return true;
+            return &slots[index];
         }
     }
-    return false;
+    return NULL;
 }
 
 static TaskbarSlot *slot_at(int x)
@@ -468,6 +500,7 @@ bool taskbar_initialize(void)
 
 void taskbar_cleanup(void)
 {
+    task_preview_cancel();
     free(slots);
     slots = NULL;
     slot_count = 0U;
@@ -550,10 +583,20 @@ void taskbar_update(void)
     tray_layout(tray_left, tray_right - tray_left, height);
     draw_clock(width, height);
 
-    if (has_hovered_slot && !identity_is_present(&hovered_slot)) {
-        has_hovered_slot = false;
+    if (has_hovered_slot) {
+        const TaskbarSlot *current = slot_by_identity(&hovered_slot);
+
+        /* A redraw can change the position of a task without a MotionNotify.
+         * The saved hover no longer proves that the pointer is over it. */
+        if (current == NULL || current->x != hovered_slot.x ||
+            current->width != hovered_slot.width) {
+            has_hovered_slot = false;
+            task_preview_cancel();
+        } else {
+            taskbar_preview_slot(current, false);
+        }
     }
-    if (has_pressed_slot && !identity_is_present(&pressed_slot)) {
+    if (has_pressed_slot && slot_by_identity(&pressed_slot) == NULL) {
         has_pressed_slot = false;
     }
 }
@@ -565,6 +608,7 @@ void taskbar_reconfigure(void)
     int width;
     int height;
 
+    task_preview_cancel();
     if (wm.taskbar_window == None) {
         return;
     }
@@ -631,6 +675,7 @@ bool taskbar_handle_button_press(const XButtonEvent *event)
         return false;
     }
     wm.last_event_time = event->time;
+    task_preview_cancel();
     if (event->button != Button1) {
         return true;
     }
@@ -689,6 +734,7 @@ bool taskbar_handle_motion(const XMotionEvent *event)
     if (changed) {
         taskbar_update();
     }
+    taskbar_preview_slot(slot, true);
     return true;
 }
 
@@ -705,6 +751,7 @@ bool taskbar_handle_enter(const XCrossingEvent *event)
         hovered_slot = *slot;
     }
     taskbar_update();
+    taskbar_preview_slot(slot, true);
     return true;
 }
 
@@ -717,6 +764,7 @@ bool taskbar_handle_leave(const XCrossingEvent *event)
         has_hovered_slot = false;
         taskbar_update();
     }
+    task_preview_cancel();
     return true;
 }
 

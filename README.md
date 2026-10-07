@@ -1,9 +1,8 @@
-# AntonioWM 0.4.13 — Autostart configurable
+# AntonioWM 0.4.14 — Miniaturas de la taskbar
 
 AntonioWM es un gestor de ventanas flotante para X11, escrito desde cero en C
-con Xlib. La versión 0.4.13 conserva íntegramente la compatibilidad ICCCM/EWMH,
-el soporte multimonitor, la captura silenciosa, el panel unificado y la bandeja
-X11/XEmbed de 0.4.12, y añade autostart configurable una sola vez por sesión.
+con Xlib. La versión 0.4.14 parte de 0.4.13-autostart y añade miniaturas del
+contenido de las ventanas al dejar el puntero sobre sus tareas.
 
 El proyecto sigue priorizando código directo y comprensible. No usa un toolkit
 gráfico, un compositor ni código procedente de otros gestores de ventanas.
@@ -38,6 +37,8 @@ gráfico, un compositor ni código procedente de otros gestores de ventanas.
   alojar applets externos XEmbed sin convertirlos en clientes normales.
 - Autostart desde el archivo de usuario para applets y programas auxiliares,
   sin duplicarlos al reiniciar internamente AntonioWM.
+- Miniatura real al dejar el puntero sobre una tarea, incluida la última
+  imagen válida de una ventana minimizada.
 - Menú propio Xlib/Xft con catálogo de aplicaciones instalado, categorías,
   navegación por ratón/teclado y acciones configurables de sesión/sistema.
 - `Ctrl + Mayús + Impr Pant` ejecuta una captura completa y la ofrece como
@@ -140,6 +141,37 @@ consume el marcador y no vuelve a lanzar comandos. Un marcador heredado o
 obsoleto con otro PID no puede suprimir un inicio normal. Así, un `volumeicon`
 existente permanece como una sola instancia y vuelve a solicitar su dock al
 System Tray recién creado.
+
+## Miniaturas de tareas 0.4.14
+
+```ini
+taskbar.preview=true
+taskbar.preview_delay=350
+taskbar.preview_width=320
+taskbar.preview_height=200
+```
+
+El retardo se mide con `CLOCK_MONOTONIC` dentro del bucle `poll()`; se guarda
+el XID de la tarea y se vuelve a localizar su cliente al vencer el plazo.
+XComposite obtiene un pixmap **del cliente reparentado**, por lo que muestra
+el contenido de la aplicación sin incluir el frame de AntonioWM. XRender
+lo escala sin deformarlo. El popup interno `override_redirect` no toma el foco
+ni entra en la lista de clientes, escritorios o Alt+Tab. Se limita al monitor
+del botón; el panel de esta versión reside en el monitor primario.
+
+Antes de minimizar, AntonioWM nombra y conserva el pixmap de Composite mientras
+el cliente queda Iconic/Unmap. Lo libera al restaurar, cerrar o reiniciar. Si
+una aplicación ya estaba minimizada cuando AntonioWM la encontró, o no había
+una imagen válida antes de su Unmap, muestra «Vista no disponible». Las
+ventanas visibles se capturan cuando se muestra o redibuja el popup; no hay
+un bucle de composición continuo.
+
+`taskbar.preview=false` desactiva por completo las capturas y evita incluso
+cargar XComposite. La biblioteca `libXcomposite.so.1` se carga dinámicamente;
+si falta ella o la extensión del servidor X, el WM arranca normalmente con
+panel y tray. XRender es requisito de compilación y ejecución. `preview_delay`
+admite 0–5000 ms; ancho y alto, 32–2048 píxeles. Los máximos se reducen si
+el monitor tiene menos espacio. No se instala ni reclama un compositor.
 
 ## Pulido visual 0.4.5
 
@@ -329,7 +361,8 @@ no se encuentra un PNG utilizable, el nombre continúa visible sin error.
 
 ```sh
 sudo apt install build-essential libx11-dev libxft-dev libxinerama-dev \
-    libxrandr-dev zlib1g-dev pkg-config xserver-xephyr xterm x11-utils \
+    libxrandr-dev libxrender-dev libxcomposite1 zlib1g-dev pkg-config \
+    xserver-xephyr xterm x11-utils \
     x11-xserver-utils xdotool
 ```
 
@@ -351,7 +384,7 @@ sudo apt install volumeicon-alsa network-manager-gnome
 
 AntonioWM no depende de esos paquetes para compilar ni arrancar.
 
-El binario enlaza con Xlib, XRandR, Xinerama, Xft y zlib; esta última se usa
+El binario enlaza con Xlib, XRandR, Xinerama, Xft, XRender, libdl y zlib; esta última se usa
 únicamente para descomprimir PNG. Xinerama proporciona el fallback de
 topología cuando RandR 1.5 no está disponible. `xdotool`, `x11-utils`,
 `x11-xserver-utils` —que contiene `xrandr`—, `xterm` y Xephyr sólo son
@@ -374,7 +407,7 @@ La versión puede consultarse sin conectarse al servidor X:
 ./antoniowm -v
 ```
 
-Ambas órdenes imprimen `AntonioWM 0.4.13-autostart` y terminan correctamente
+Ambas órdenes imprimen `AntonioWM 0.4.14-task-preview` y terminan correctamente
 aunque no exista `DISPLAY` o ya haya otro gestor controlando la pantalla.
 
 Objetivos disponibles:
@@ -390,6 +423,7 @@ make multimonitor-smoke # sólo geometría RandR y resize por frame
 make screenshot-smoke  # sólo captura, CLIPBOARD, locks y procesos hijos
 make systray-smoke     # sólo selección, XEmbed, layout y ciclo de iconos
 make autostart-smoke   # sólo parser, procesos, reinicios y tray de autostart
+make task-preview-smoke # miniatura, Iconic, retardo y fallback sin Composite
 make audit-smoke # carga, cierres concurrentes y limpieza/reinicio del WM
 make clean
 ```
@@ -490,6 +524,10 @@ taskbar.enabled=true
 taskbar.height=30
 taskbar.gap=4
 taskbar.padding=4
+taskbar.preview=true
+taskbar.preview_delay=350
+taskbar.preview_width=320
+taskbar.preview_height=200
 taskbar.launcher_count=4
 
 launcher.1.label=Chrome
@@ -536,6 +574,7 @@ omite, se utiliza el comando `maim | xclip ...` mostrado anteriormente.
 Los comandos se leen de nuevo al reiniciar, pero se ejecutan sólo al inicio de
 la sesión: `Super + Mayús + R` nunca los relanza. Para aplicar cambios de
 autostart hay que terminar AntonioWM e iniciar una sesión/proceso nuevo.
+Las cuatro claves `taskbar.preview*` también se recargan en el reinicio interno.
 
 Las cuatro claves `system.*.command` controlan las acciones del menú. Un
 `system.logout.command` vacío usa la terminación limpia de AntonioWM, que
@@ -791,6 +830,18 @@ el estrés de 24 clientes sin diagnósticos. Work no incluye `volumeicon` ni
 `nm-applet`; la integración real conserva la ruta XEmbed validada en 0.4.12 y
 se cubrió aquí con el applet instrumentado.
 
+Para 0.4.14 se repitió `make smoke` completo y se amplió la prueba de
+miniaturas: dos tareas, destrucción durante el retardo y con popup visible,
+10 ciclos, imagen Iconic después de un resize, dos monitores, reinicio,
+desactivación por configuración y Xephyr sin Composite. También se verificó
+el popup con xterm, xfce4-terminal, Thunar y Mousepad reales. ASan/UBSan
+pasaron la suite de miniaturas y el estrés de 24 clientes. En ASan se
+suprimieron únicamente las asignaciones globales retenidas por fontconfig
+al cerrar Xft; no se suprimieron diagnósticos del código de AntonioWM.
+La ruta `UnmapNotify`/`DestroyNotify` se ajustó de forma puntual para reconocer
+una destrucción ya encolada antes de enviar peticiones X11 contra ese XID;
+la prueba instrumentada de cierre durante el retardo no produjo `BadWindow`.
+
 ## Configuración
 
 Los valores de fábrica están en `config.h`: terminal; captura; panel; menú;
@@ -819,6 +870,7 @@ AntonioWM/
 ├── src/decor.c        Frames, títulos, botones y geometría decorada
 ├── src/clock.c        Reloj compartido y cálculo del siguiente minuto
 ├── src/taskbar.c      Panel único, menú, escritorios, launchers y tareas
+├── src/task_preview.c Captura Composite, escala XRender y popup temporizado
 ├── src/menu.c         Menú nativo, navegación y acciones del sistema
 ├── src/tray.c         Selección System Tray, XEmbed, iconos y layout
 ├── src/autostart.c    Inicio por sesión y marcador del reinicio interno
@@ -832,7 +884,7 @@ AntonioWM/
 └── README.md
 ```
 
-## Límites deliberados de la versión 0.4.13
+## Límites deliberados de la versión 0.4.14
 
 - Fullscreen ocupa por defecto un único monitor. Aún no se implementa la
   solicitud opcional `_NET_WM_FULLSCREEN_MONITORS` para abarcar varios

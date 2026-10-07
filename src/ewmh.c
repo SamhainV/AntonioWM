@@ -1230,6 +1230,7 @@ static void apply_simple_state(Client *client, Atom state, long action)
         state == wm.atoms.net_wm_state_maximized_horz) {
         return;
     }
+    task_preview_client_state_changed(client);
     if (state == wm.atoms.net_wm_state_fullscreen) {
         client_set_fullscreen(client,
                               state_after_action(action, client->fullscreen));
