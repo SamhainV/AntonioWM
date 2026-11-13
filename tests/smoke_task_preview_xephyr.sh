@@ -153,8 +153,9 @@ start_client()
 
 hover_task()
 {
+    # --sync waits forever when the pointer is already at the target.
     DISPLAY="$NESTED_CLIENT_DISPLAY" xdotool \
-        mousemove --sync --window "$PANEL_WINDOW" 300 15
+        mousemove --window "$PANEL_WINDOW" 300 15
 }
 
 move_off_panel()

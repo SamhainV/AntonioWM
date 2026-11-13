@@ -392,7 +392,51 @@ static void layout_clients(int start, int content_end, int height)
                            client->title != NULL ? client->title : "(sin titulo)");
             background = wm.bar_item;
         }
-        draw_button(slot, background, label, false, height);
+        {
+            int padding = taskbar_padding(height);
+            int size = minimum_int(height - 2 * padding, 32);
+            int text_x = slot->x + padding;
+            int content = slot->width - 2 * padding;
+            background = draw_button_background(slot, background, height);
+            if (size > 0 && content > size + padding) {
+                if (!client->taskbar_icon_loaded) {
+                    (void)icon_load_client(client->window, (unsigned int)size,
+                                           &client->taskbar_icon);
+                    client->taskbar_icon_loaded = true;
+                }
+                unsigned int icon_width = (unsigned int)size;
+                unsigned int icon_height = (unsigned int)size;
+                if (client->taskbar_icon.rgba != NULL) {
+                    unsigned int w = client->taskbar_icon.width;
+                    unsigned int h = client->taskbar_icon.height;
+                    if (w > h) icon_height = (unsigned int)size * h / w;
+                    else icon_width = (unsigned int)size * w / h;
+                    if (icon_width == 0U) icon_width = 1U;
+                    if (icon_height == 0U) icon_height = 1U;
+                }
+                if (!icon_draw(wm.taskbar_window, &client->taskbar_icon,
+                               text_x + (size - (int)icon_width) / 2,
+                               (height - (int)icon_height) / 2,
+                               icon_width, icon_height, background)) {
+                    /* Generic window glyph also works on non-TrueColor visuals. */
+                    draw_rectangle(wm.taskbar_window, wm.bar_foreground,
+                                   text_x, (height - size) / 2,
+                                   (unsigned int)maximum_int(size - 1, 1),
+                                   (unsigned int)maximum_int(size - 1, 1));
+                    draw_line(wm.taskbar_window, wm.bar_foreground, text_x,
+                              (height - size) / 2 + size / 3,
+                              text_x + size - 1, (height - size) / 2 + size / 3);
+                }
+                text_x += size + padding;
+                content -= size + padding;
+            }
+            if (content > 0) {
+                draw_text_ellipsized(wm.taskbar_window, wm.bar_foreground,
+                                     text_x, draw_text_baseline(height), text_x, 1,
+                                     (unsigned int)content,
+                                     (unsigned int)maximum_int(height - 1, 1), label);
+            }
+        }
         x += width + wm.config.taskbar_gap;
     }
 }

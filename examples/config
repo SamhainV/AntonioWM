@@ -43,6 +43,8 @@ launcher.4.label=GIMP
 launcher.4.command=gimp
 launcher.4.icon=icons/gimp.png
 
+# Entre 1 y 16; se aplica al iniciar o reiniciar internamente.
+desktop.count=4
 desktop.1=Trabajo
 desktop.2=Web
 desktop.3=Multimedia

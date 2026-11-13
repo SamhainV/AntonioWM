@@ -360,7 +360,7 @@ no se encuentra un PNG utilizable, el nombre continúa visible sin error.
 ## Dependencias en Debian 13
 
 ```sh
-sudo apt install build-essential libx11-dev libxft-dev libxinerama-dev \
+sudo apt install build-essential libx11-dev libxft-dev libfontconfig1-dev libxinerama-dev \
     libxrandr-dev libxrender-dev libxcomposite1 zlib1g-dev pkg-config \
     xserver-xephyr xterm x11-utils \
     x11-xserver-utils xdotool
@@ -588,6 +588,74 @@ logind/polkit de la sesión.
 `config.h` sigue siendo la fuente de todos los valores de fábrica y contiene
 además colores, tipografía, dimensiones de decoraciones y atajos, que en esta
 versión aún requieren recompilar.
+
+## Ejemplo de configuración personal
+
+Este ejemplo se guarda en `~/.config/antoniowm/config`. Es una opción para
+quien quiera cinco launchers y un único escritorio; **el valor predeterminado
+del proyecto sigue siendo cuatro escritorios**. No se copia ni se instala
+automáticamente sobre la configuración de ningún usuario.
+
+Cada usuario puede adaptar los comandos a sus programas instalados y elegir
+sus propios iconos PNG. Las rutas `icons/...` son relativas al directorio del
+fichero de configuración: por ejemplo, `icons/chrome.png` corresponde a
+`~/.config/antoniowm/icons/chrome.png`. Si un icono de launcher no se puede
+cargar, se muestra su etiqueta. Los iconos de las tareas se obtienen de las
+ventanas de las aplicaciones, independientemente de estos PNG.
+
+```ini
+# Cinco accesos directos en la barra inferior.
+taskbar.launcher_count=5
+
+# Google Chrome.
+launcher.1.label=Chrome
+launcher.1.command=google-chrome
+launcher.1.icon=icons/chrome.png
+
+# Terminal: cambia el comando si utilizas otro emulador.
+launcher.2.label=Terminal
+launcher.2.command=gnome-terminal
+launcher.2.icon=icons/terminal.png
+
+# Gestor de archivos.
+launcher.3.label=Archivos
+launcher.3.command=pcmanfm
+launcher.3.icon=icons/files.png
+
+# Editor de imágenes.
+launcher.4.label=GIMP
+launcher.4.command=gimp
+launcher.4.icon=icons/gimp.png
+
+# Spotify.
+launcher.5.label=Spotify
+launcher.5.command=spotify
+launcher.5.icon=icons/spotify-client.png
+
+# Seleccionar una región y copiar la captura PNG al portapapeles.
+# Requiere maim y xclip.
+screenshot.command=maim -s | xclip -selection clipboard -t image/png -i
+
+# Applets X11: se inician una vez por sesión, no en cada reinicio interno.
+autostart.count=2
+autostart.1.command=volumeicon
+autostart.2.command=nm-applet
+
+# Miniaturas al mantener el puntero sobre una tarea.
+taskbar.preview=true
+taskbar.preview_delay=350
+# Tamaño máximo, en píxeles.
+taskbar.preview_width=320
+taskbar.preview_height=200
+
+# Preferencia de este ejemplo: un escritorio, con etiqueta numérica 1.
+# Omitir esta clave mantiene los cuatro escritorios predeterminados.
+desktop.count=1
+```
+
+Tras guardar los cambios, `Super+Shift+r` reinicia internamente AntonioWM y
+vuelve a cargar el archivo. El ejemplo general de `examples/config` conserva
+cuatro escritorios y puede usarse como alternativa.
 
 ## Pruebas automáticas
 
@@ -892,8 +960,8 @@ AntonioWM/
 - No hay compositor, transparencias, sombras complejas, animaciones, búsqueda
   completa de todos los temas de iconos ni motor de temas. El catálogo busca
   PNG en ubicaciones hicolor/pixmaps habituales; otros formatos quedan en
-  fallback de texto. Los iconos de ventanas en la taskbar siguen siendo
-  opcionales y esta versión conserva allí el título.
+  fallback de texto en launchers. Las tareas muestran el icono publicado por
+  el cliente, o un símbolo genérico, junto al título.
 - Existe un único panel, asociado al monitor primario. `_NET_WORKAREA` sólo
   puede publicar un rectángulo global por escritorio, por lo que en una
   topología desigual se anuncia una reserva conservadora; el cálculo interno
@@ -909,3 +977,59 @@ AntonioWM/
   SNI necesitan un puente externo o una versión futura.
 - No se instala todavía como sesión de un display manager. La instalación en
   `/usr/local` y la integración de sesión continúan reservadas para la FASE 5.
+
+### Número y etiquetas de escritorios
+
+En `~/.config/antoniowm/config` (o `XDG_CONFIG_HOME/antoniowm/config`;
+`ANTONIOWM_CONFIG` tiene prioridad):
+
+```ini
+desktop.count=6
+desktop.1.name=Trabajo
+desktop.2.name=Web
+desktop.6.name=Correo
+```
+
+El rango es 1–16. Sin configuración siguen siendo cuatro, con etiquetas
+1, 2, 3 y 4. Las etiquetas omitidas son el número correspondiente; también
+se conserva la sintaxis `desktop.1=Trabajo`. Cada etiqueta admite hasta 63
+bytes UTF-8; no se admiten comas como separador de una lista de nombres.
+Valores de count inválidos conservan el valor anterior de esa carga.
+Se recarga mediante el atajo de reinicio interno existente; no hay recarga
+por SIGHUP. Si disminuye el número, los clientes de escritorios eliminados
+y el escritorio actual pasan al último válido al recuperar la sesión. Las
+ventanas sticky mantienen su estado. Los atajos numéricos cubren hasta 9;
+el panel permite seleccionar los restantes, sujeto al espacio disponible.
+
+Los botones de clientes muestran `_NET_WM_ICON` a la izquierda del título.
+Se elige la menor imagen que cubre el tamaño requerido, o la mayor menor
+disponible; se convierte ARGB a RGBA y se mezcla alfa con el fondo. Se limita
+la propiedad a 1.048.576 unidades de 32 bits y cada dimensión a 2048.
+La caché se libera al cambiar la propiedad y al retirar el cliente. Si no
+hay propiedad válida se intenta `WM_HINTS`: pixmap de profundidad 1 o
+TrueColor de la pantalla, con máscara monocroma opcional. Los XID obsoletos
+se capturan en una lectura síncrona local. Si no hay imagen válida, o la
+visual no es TrueColor, se dibuja un símbolo genérico de ventana. Clics y previews conservan los mismos slots.
+
+Prueba aislada de configuración e iconos: `make config-icons-test`.
+Véase `AUDIT.md` para resultados y límites de esta revisión.
+
+Validación X11 adicional (requiere un DISPLAY anfitrión para Xephyr, XTest,
+XRes y las herramientas indicadas en los scripts):
+
+```sh
+./tests/run_x11_integration.sh
+./tests/run_isolated_regressions.sh
+./tests/run_icon_depths.sh
+./tests/run_real_apps.sh
+```
+
+Los scripts crean pantallas anidadas, nunca arrancan el WM sobre el DISPLAY
+anfitrión, y rechazan pantallas de prueba ya ocupadas. La integración admite
+`WM_BINARY`, `EVIDENCE_DIR`, `TEST_SANITIZERS` y `AWM_XRES_LIBRARY` para probar
+un binario instrumentado y una biblioteca XRes extraída sin instalarla.
+Las regresiones aceptan `WM_BINARY` y `TEST_SCREEN_BASE` y usan una copia
+privada para no interferir con las compilaciones del árbol de trabajo.
+`ANTONIOWM_LOG_XERRORS=1` permite registrar también los errores X11 tolerados
+por el manejador habitual. El cierre normal finaliza la caché de Fontconfig
+tras cerrar Xft y la conexión X11.

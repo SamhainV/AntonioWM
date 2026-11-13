@@ -44,6 +44,7 @@ typedef struct {
                            [AWM_RUNTIME_COMMAND_LENGTH];
     size_t launcher_count;
     LauncherConfig launchers[AWM_RUNTIME_MAX_LAUNCHERS];
+    unsigned int desktop_count;
     char desktop_names[AWM_RUNTIME_MAX_DESKTOPS][AWM_RUNTIME_LABEL_LENGTH];
 } RuntimeConfig;
 
@@ -177,6 +178,7 @@ typedef struct {
     Atom net_moveresize_window;
     Atom net_wm_moveresize;
     Atom net_restack_window;
+    Atom net_wm_icon;
     Atom net_wm_name;
     Atom motif_wm_hints;
     Atom utf8_string;
@@ -277,6 +279,8 @@ struct Client {
     bool visible;
     unsigned int ignore_unmap;
     ClientPart hovered_part;
+    IconImage taskbar_icon;
+    bool taskbar_icon_loaded;
     char *title;
 
     /* Last Composite backing pixmap retained while the client is Iconic. */
@@ -408,6 +412,7 @@ bool desktop_entry_launch_command(const ApplicationEntry *entry,
                                   size_t capacity);
 
 /* icon.c */
+bool icon_load_client(Window window, unsigned int size, IconImage *image);
 bool icon_load_png(const char *path, IconImage *image);
 void icon_free(IconImage *image);
 bool icon_draw(Drawable drawable,

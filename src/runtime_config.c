@@ -73,6 +73,11 @@ static void load_defaults(void)
                     AWM_SYSTEM_POWEROFF_COMMAND,
                     "system.poweroff.command",
                     0U);
+    wm.config.desktop_count = AWM_DESKTOP_COUNT;
+    for (index = 0U; index < AWM_RUNTIME_MAX_DESKTOPS; ++index) {
+        (void)snprintf(wm.config.desktop_names[index],
+                       sizeof(wm.config.desktop_names[index]), "%zu", index + 1U);
+    }
     wm.config.taskbar_enabled = AWM_TASKBAR_ENABLED != 0;
     wm.config.taskbar_height = AWM_TASKBAR_HEIGHT;
     wm.config.taskbar_gap = AWM_TASKBAR_GAP;
@@ -388,7 +393,13 @@ static void apply_value(const char *key,
     bool boolean;
     long number;
 
-    if (strcmp(key, "terminal") == 0) {
+    if (strcmp(key, "desktop.count") == 0) {
+        if (parse_number(value, 1L, (long)AWM_RUNTIME_MAX_DESKTOPS, &number)) {
+            wm.config.desktop_count = (unsigned int)number;
+        } else {
+            invalid_value(key, line_number);
+        }
+    } else if (strcmp(key, "terminal") == 0) {
         (void)copy_text(wm.config.terminal,
                         sizeof(wm.config.terminal),
                         value,

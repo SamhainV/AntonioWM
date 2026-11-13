@@ -123,10 +123,16 @@ static void handle_property_notify(const XPropertyEvent *event)
     Client *client = client_find(event->window);
 
     wm.last_event_time = event->time;
-    if (client != NULL &&
+    if (client != NULL && event->atom == wm.atoms.net_wm_icon) {
+        icon_free(&client->taskbar_icon);
+        client->taskbar_icon_loaded = false;
+        taskbar_update();
+    } else if (client != NULL &&
         (event->atom == XA_WM_NAME || event->atom == wm.atoms.net_wm_name)) {
         client_update_title(client);
     } else if (client != NULL && event->atom == XA_WM_HINTS) {
+        icon_free(&client->taskbar_icon);
+        client->taskbar_icon_loaded = false;
         hints_refresh_focus_model(client);
         hints_refresh_urgency(client);
         client_reconsider_focus(client);

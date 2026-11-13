@@ -215,6 +215,7 @@ static void initialize_atoms(void)
     wm.atoms.net_moveresize_window = intern("_NET_MOVERESIZE_WINDOW");
     wm.atoms.net_wm_moveresize = intern("_NET_WM_MOVERESIZE");
     wm.atoms.net_restack_window = intern("_NET_RESTACK_WINDOW");
+    wm.atoms.net_wm_icon = intern("_NET_WM_ICON");
     wm.atoms.net_wm_name = intern("_NET_WM_NAME");
     wm.atoms.motif_wm_hints = intern("_MOTIF_WM_HINTS");
     wm.atoms.utf8_string = intern("UTF8_STRING");
@@ -279,6 +280,7 @@ static void publish_supported_atoms(void)
         wm.atoms.net_moveresize_window,
         wm.atoms.net_wm_moveresize,
         wm.atoms.net_restack_window,
+        wm.atoms.net_wm_icon,
         wm.atoms.net_wm_name
     };
 
@@ -403,9 +405,9 @@ void ewmh_initialize(void)
     unsigned long previous_desktop;
 
     initialize_atoms();
-    if (get_cardinal(wm.root, wm.atoms.net_current_desktop, &previous_desktop) &&
-        previous_desktop < (unsigned long)wm.desktop_count) {
-        wm.current_desktop = (unsigned int)previous_desktop;
+    if (get_cardinal(wm.root, wm.atoms.net_current_desktop, &previous_desktop)) {
+        wm.current_desktop = previous_desktop < wm.desktop_count
+                                 ? (unsigned int)previous_desktop : wm.desktop_count - 1U;
     }
 
     create_supporting_window();
@@ -457,8 +459,8 @@ unsigned int ewmh_get_window_desktop(Window window, unsigned int fallback)
     unsigned long desktop;
 
     if (get_cardinal(window, wm.atoms.net_wm_desktop, &desktop) &&
-        desktop < (unsigned long)wm.desktop_count) {
-        return (unsigned int)desktop;
+        desktop != 0xffffffffUL) {
+        return desktop < wm.desktop_count ? (unsigned int)desktop : wm.desktop_count - 1U;
     }
     return fallback;
 }

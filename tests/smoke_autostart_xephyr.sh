@@ -58,7 +58,7 @@ wait_for_count()
     attempt=0
     while :; do
         current=$(grep -c "^$pattern$" "$path" 2>/dev/null || true)
-        [ "$current" -ge "$wanted" ] && return
+        [ "${current:-0}" -ge "$wanted" ] && return
         attempt=$((attempt + 1))
         [ "$attempt" -le 120 ] || fail "No se observo $description."
         sleep 0.05

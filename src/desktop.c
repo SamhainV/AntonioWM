@@ -36,7 +36,10 @@ static Client *focus_candidate(unsigned int desktop)
 
 bool desktop_initialize(void)
 {
-    wm.desktop_count = AWM_DESKTOP_COUNT > 0U ? AWM_DESKTOP_COUNT : 1U;
+    wm.desktop_count = wm.config.desktop_count;
+    if (wm.desktop_count == 0U || wm.desktop_count > AWM_RUNTIME_MAX_DESKTOPS) {
+        wm.desktop_count = 4U;
+    }
     wm.current_desktop = 0U;
     wm.cascade_indices = calloc(wm.desktop_count, sizeof(*wm.cascade_indices));
     wm.desktop_focus = calloc(wm.desktop_count, sizeof(*wm.desktop_focus));

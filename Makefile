@@ -11,7 +11,7 @@ CFLAGS += -std=c11 -Wall -Wextra -Wpedantic -Wshadow -Wformat=2 \
           -Wundef -Wpointer-arith -Wstrict-prototypes -Wmissing-prototypes
 
 LDFLAGS ?=
-LDLIBS += -lX11 -lXrandr -lXinerama $(XFT_LIBS) -lXrender -lz -ldl
+LDLIBS += -lX11 -lXrandr -lXinerama $(XFT_LIBS) -lfontconfig -lXrender -lz -ldl
 
 TARGET := antoniowm
 SOURCES := src/main.c src/events.c src/client.c src/keyboard.c src/mouse.c \
@@ -111,3 +111,8 @@ clean:
 		$(TEST_CLIPBOARD) $(TEST_DESKTOP_ENTRIES) $(TEST_TRAY)
 
 -include $(DEPENDENCIES)
+
+.PHONY: config-icons-test
+config-icons-test:
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o /tmp/awm-config-icons-test tests/config_icons_test.c src/runtime_config.c src/icon.c $(LDLIBS)
+	/tmp/awm-config-icons-test

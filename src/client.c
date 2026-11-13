@@ -474,6 +474,7 @@ void client_manage(Window window, bool map_requested)
     if (!decor_create(client, was_viewable)) {
         detach_client(client);
         free(client->title);
+        icon_free(&client->taskbar_icon);
         free(client);
         return;
     }
@@ -713,6 +714,7 @@ void client_unmanage(Client *client, bool destroyed)
     }
     detach_client(client);
     free(client->title);
+    icon_free(&client->taskbar_icon);
     free(client);
     ewmh_update_client_list();
     ewmh_recalculate_workarea();
@@ -744,6 +746,7 @@ void client_cleanup_all(void)
             ewmh_clear_client_properties(client);
         }
         free(client->title);
+        icon_free(&client->taskbar_icon);
         free(client);
         client = next;
     }

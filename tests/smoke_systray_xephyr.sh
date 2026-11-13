@@ -204,9 +204,16 @@ start_wm()
         sleep 0.05
     done
     [ "$attempt" -lt 100 ] || fail "AntonioWM no publico EWMH."
-    PANEL_WINDOW=$(DISPLAY="$NESTED_CLIENT_DISPLAY" \
-        xdotool search --name '^AntonioWM Panel$' 2>/dev/null | tail -n 1 || true)
-    [ -n "$PANEL_WINDOW" ] || fail "No se creo el panel inferior."
+    # EWMH is published before taskbar_initialize; wait for the panel too.
+    attempt=0
+    while :; do
+        PANEL_WINDOW=$(DISPLAY="$NESTED_CLIENT_DISPLAY" \
+            xdotool search --name '^AntonioWM Panel$' 2>/dev/null | tail -n 1 || true)
+        [ -z "$PANEL_WINDOW" ] || break
+        attempt=$((attempt + 1))
+        [ "$attempt" -lt 100 ] || fail "No se creo el panel inferior."
+        sleep 0.05
+    done
 }
 
 start_icon()
@@ -491,8 +498,12 @@ MOCK_OWNER=$(sed -n '1p' "$TEST_TMP/mock.id")
 start_wm
 [ "$(wait_for_owner)" = "$MOCK_OWNER" ] ||
     fail "AntonioWM robo una seleccion tray existente."
-grep -q 'ya pertenece.*bandeja del sistema queda desactivada' "$TEST_TMP/wm.log" ||
-    fail "Falta el diagnostico de seleccion tray ocupada."
+attempt=0
+until grep -q 'ya pertenece.*bandeja del sistema queda desactivada' "$TEST_TMP/wm.log"; do
+    attempt=$((attempt + 1))
+    [ "$attempt" -lt 100 ] || fail "Falta el diagnostico de seleccion tray ocupada."
+    sleep 0.05
+done
 start_icon "$TEST_TMP/conflict.id" "$TEST_TMP/conflict.log" \
     "Tray Conflict" 32
 CONFLICT=$STARTED_ICON

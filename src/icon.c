@@ -726,3 +726,146 @@ bool icon_draw(Drawable drawable,
     /* XPutImage queues an asynchronous X request and has no success value. */
     return true;
 }
+
+/* Xlib represents format-32 properties as native unsigned longs, even on LP64.
+ * Bound the entire request as well as each image before doing arithmetic. */
+static bool icon_load_net(Window window, unsigned int size, IconImage *image)
+{
+    Atom type;
+    int format;
+    unsigned long count = 0UL, after = 0UL;
+    unsigned char *data = NULL;
+    unsigned long *words;
+    size_t offset = 0U, best = 0U, best_pixels = 0U;
+    unsigned long best_score = ULONG_MAX;
+    unsigned int width = 0U, height = 0U;
+    const long limit = 1024L * 1024L;
+
+    icon_free(image);
+    if (XGetWindowProperty(wm.display, window, wm.atoms.net_wm_icon,
+                           0L, limit, False, XA_CARDINAL, &type, &format,
+                           &count, &after, &data) != Success ||
+        type != XA_CARDINAL || format != 32 || after != 0UL || data == NULL) {
+        if (data != NULL) XFree(data);
+        return false;
+    }
+    words = (unsigned long *)data;
+    while (offset + 2U <= count) {
+        unsigned long w = words[offset++], h = words[offset++];
+        size_t pixels;
+        unsigned long score;
+        if (w == 0UL || h == 0UL || w > 2048UL || h > 2048UL ||
+            w > (count - offset) / h) break;
+        pixels = (size_t)(w * h);
+        /* Prefer the smallest image meeting both requested dimensions. */
+        score = w >= size && h >= size ? w + h : 8192UL - w - h;
+        if (score < best_score) {
+            best_score = score;
+            best = offset;
+            best_pixels = pixels;
+            width = (unsigned int)w;
+            height = (unsigned int)h;
+        }
+        offset += pixels;
+    }
+    if (best_pixels != 0U) {
+        image->rgba = malloc(best_pixels * 4U);
+        if (image->rgba != NULL) {
+            size_t index;
+            image->width = width;
+            image->height = height;
+            for (index = 0U; index < best_pixels; ++index) {
+                uint32_t argb = (uint32_t)words[best + index];
+                image->rgba[index * 4U] = (unsigned char)(argb >> 16U);
+                image->rgba[index * 4U + 1U] = (unsigned char)(argb >> 8U);
+                image->rgba[index * 4U + 2U] = (unsigned char)argb;
+                image->rgba[index * 4U + 3U] = (unsigned char)(argb >> 24U);
+            }
+        }
+    }
+    XFree(data);
+    return image->rgba != NULL;
+}
+
+/* A client owns these pixmaps and may free them at any time. Trap only this
+ * synchronous read, after draining preceding WM requests with its usual handler. */
+static bool hints_read_failed;
+
+static int hints_read_error(Display *display, XErrorEvent *error)
+{
+    (void)display;
+    (void)error;
+    hints_read_failed = true;
+    return 0;
+}
+
+static bool icon_load_hints(Window window, IconImage *image)
+{
+    XWMHints *hints = XGetWMHints(wm.display, window);
+    XImage *pixels = NULL, *mask = NULL;
+    Window root;
+    int x, y;
+    unsigned int width, height, border, depth;
+    int (*previous)(Display *, XErrorEvent *);
+    Visual *visual;
+    bool success = false;
+
+    if (hints == NULL) return false;
+    visual = DefaultVisual(wm.display, wm.screen);
+    if ((hints->flags & IconPixmapHint) == 0 || hints->icon_pixmap == None) {
+        XFree(hints);
+        return false;
+    }
+    XSync(wm.display, False);
+    hints_read_failed = false;
+    previous = XSetErrorHandler(hints_read_error);
+    if (!XGetGeometry(wm.display, hints->icon_pixmap, &root, &x, &y,
+                      &width, &height, &border, &depth) || hints_read_failed ||
+        width == 0U || height == 0U || width > 2048U || height > 2048U ||
+        (size_t)width * height > 1024U * 1024U ||
+        (depth != 1U && (depth != (unsigned int)DefaultDepth(wm.display, wm.screen) ||
+                        visual->class != TrueColor))) goto done;
+    pixels = XGetImage(wm.display, hints->icon_pixmap, 0, 0,
+                       width, height, AllPlanes, ZPixmap);
+    if (pixels == NULL || hints_read_failed) goto done;
+    if ((hints->flags & IconMaskHint) != 0 && hints->icon_mask != None) {
+        unsigned int mw, mh, md;
+        if (!XGetGeometry(wm.display, hints->icon_mask, &root, &x, &y,
+                          &mw, &mh, &border, &md) || hints_read_failed ||
+            mw < width || mh < height || md != 1U) goto done;
+        mask = XGetImage(wm.display, hints->icon_mask, 0, 0,
+                         width, height, 1UL, ZPixmap);
+        if (mask == NULL || hints_read_failed) goto done;
+    }
+    image->rgba = malloc((size_t)width * height * 4U);
+    if (image->rgba == NULL) goto done;
+    image->width = width;
+    image->height = height;
+    for (unsigned int row = 0U; row < height; ++row) {
+        for (unsigned int column = 0U; column < width; ++column) {
+            unsigned long pixel = XGetPixel(pixels, (int)column, (int)row);
+            unsigned char *rgba = image->rgba + ((size_t)row * width + column) * 4U;
+            rgba[0] = (unsigned char)(depth == 1U ? (pixel ? 255U : 0U) :
+                                     pixel_component(pixel, visual->red_mask));
+            rgba[1] = (unsigned char)(depth == 1U ? rgba[0] :
+                                     pixel_component(pixel, visual->green_mask));
+            rgba[2] = (unsigned char)(depth == 1U ? rgba[0] :
+                                     pixel_component(pixel, visual->blue_mask));
+            rgba[3] = mask == NULL || XGetPixel(mask, (int)column, (int)row) ? 255U : 0U;
+        }
+    }
+    success = true;
+done:
+    if (pixels != NULL) XDestroyImage(pixels);
+    if (mask != NULL) XDestroyImage(mask);
+    XSync(wm.display, False);
+    XSetErrorHandler(previous);
+    XFree(hints);
+    if (!success) icon_free(image);
+    return success;
+}
+
+bool icon_load_client(Window window, unsigned int size, IconImage *image)
+{
+    return icon_load_net(window, size, image) || icon_load_hints(window, image);
+}

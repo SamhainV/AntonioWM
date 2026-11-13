@@ -683,12 +683,35 @@ static bool handle_unmap(const XUnmapEvent *event)
     return true;
 }
 
+static Bool destroyed_tray_client(Display *display, XEvent *event, XPointer data)
+{
+    (void)display;
+    return event->type == DestroyNotify &&
+           event->xdestroywindow.window == *(const Window *)data;
+}
+
 bool tray_handle_event(XEvent *event)
 {
     TrayIcon *icon;
 
     if (event == NULL || tray.cleaning) {
         return false;
+    }
+    /* A killed applet can leave property/unmap events ahead of DestroyNotify.
+     * Do not query its _XEMBED_INFO after the server has destroyed its XID. */
+    if (event->type == UnmapNotify || event->type == PropertyNotify) {
+        Window window = event->type == UnmapNotify ? event->xunmap.window
+                                                   : event->xproperty.window;
+        icon = find_client_icon(window);
+        if (icon != NULL) {
+            XEvent destroyed;
+            XSync(wm.display, False);
+            if (XCheckIfEvent(wm.display, &destroyed, destroyed_tray_client,
+                              (XPointer)&window)) {
+                release_icon(icon, true, false);
+                return true;
+            }
+        }
     }
     switch (event->type) {
     case ClientMessage:

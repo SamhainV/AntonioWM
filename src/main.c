@@ -3,6 +3,7 @@
 
 #include <X11/cursorfont.h>
 #include <X11/extensions/Xrandr.h>
+#include <fontconfig/fontconfig.h>
 
 #include <errno.h>
 #include <locale.h>
@@ -42,6 +43,11 @@ static int runtime_xerror(Display *display, XErrorEvent *error)
     /* Windows can disappear between an event and its asynchronous request. */
     if (error->error_code == BadWindow || error->error_code == BadDrawable ||
         error->error_code == BadMatch || error->error_code == BadAccess) {
+        if (getenv("ANTONIOWM_LOG_XERRORS") != NULL) {
+            XGetErrorText(display, error->error_code, message, (int)sizeof(message));
+            fprintf(stderr, "%s: X11 diagnostic: %s request=%u resource=0x%lx\n",
+                    AWM_NAME, message, (unsigned int)error->request_code, error->resourceid);
+        }
         return 0;
     }
 
@@ -499,10 +505,14 @@ int main(int argc, char **argv)
     }
 
     if (!wm_initialize(argc, argv)) {
+        FcFini();
         return EXIT_FAILURE;
     }
 
     wm_run();
     wm_cleanup();
+    /* Xft and its display callbacks have released their fonts by this point.
+     * Release Fontconfig's process-wide cache before normal process exit. */
+    FcFini();
     return EXIT_SUCCESS;
 }

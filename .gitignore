@@ -1,3 +1,12 @@
 /antoniowm
 /build/
-/tests/awm-test-client
+
+# Ejecutables generados para pruebas.
+/tests/awm-*
+
+# Evidencias locales, capturas, logs y copias de instalación: no publicar.
+/tests/evidence/
+
+# Credenciales y estado local de herramientas.
+/.aws/
+/.codex/
