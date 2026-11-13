@@ -453,6 +453,7 @@ void client_minimize(Client *client);
 void client_restore(Client *client);
 void client_reapply_screen_state(Client *client);
 void client_send_configure(Client *client);
+bool client_is_cycle_candidate(const Client *client);
 bool client_is_focus_candidate(const Client *client);
 bool client_is_taskbar_visible(const Client *client);
 void client_raise(Client *client);
@@ -574,6 +575,16 @@ bool taskbar_handle_motion(const XMotionEvent *event);
 bool taskbar_handle_enter(const XCrossingEvent *event);
 bool taskbar_handle_leave(const XCrossingEvent *event);
 void taskbar_handle_expose(const XExposeEvent *event);
+
+/* switcher.c */
+void switcher_step(int direction);
+void switcher_cancel(void);
+void switcher_cleanup(void);
+void switcher_refresh(void);
+void switcher_raise(void);
+bool switcher_is_active(void);
+bool switcher_blocks_enter(const XCrossingEvent *event);
+bool switcher_handle_event(XEvent *event);
 
 /* task_preview.c */
 bool task_preview_initialize(void);

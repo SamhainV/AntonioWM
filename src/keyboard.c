@@ -176,10 +176,10 @@ void keyboard_handle_keypress(XKeyEvent *event)
 
     if ((symbol == AWM_CYCLE_KEY || symbol == XK_ISO_Left_Tab) &&
         modifiers == AWM_ALT_MOD) {
-        client_cycle_focus(1);
+        switcher_step(1);
     } else if ((symbol == AWM_CYCLE_KEY || symbol == XK_ISO_Left_Tab) &&
                modifiers == (AWM_ALT_MOD | ShiftMask)) {
-        client_cycle_focus(-1);
+        switcher_step(-1);
     } else if (symbol == AWM_CLOSE_KEY && modifiers == AWM_ALT_MOD) {
         client_close(wm.focused);
     } else if (symbol == AWM_TERMINAL_KEY && modifiers == AWM_SUPER_MOD) {
@@ -198,6 +198,7 @@ void keyboard_handle_keypress(XKeyEvent *event)
 
 void keyboard_refresh_mapping(XMappingEvent *event)
 {
+    switcher_cancel();
     XRefreshKeyboardMapping(event);
     keyboard_grab_keys();
     mouse_regrab_all();

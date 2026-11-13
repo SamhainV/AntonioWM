@@ -427,6 +427,7 @@ void wm_cleanup(void)
         return;
     }
 
+    switcher_cleanup();
     keyboard_ungrab_keys();
     menu_cleanup();
     tray_cleanup();

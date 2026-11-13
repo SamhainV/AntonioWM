@@ -166,6 +166,7 @@ void desktop_switch(unsigned int desktop)
     if (desktop >= wm.desktop_count || desktop == wm.current_desktop) {
         return;
     }
+    switcher_cancel();
     task_preview_cancel();
 
     old_desktop = wm.current_desktop;

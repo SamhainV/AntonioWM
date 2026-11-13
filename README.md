@@ -487,6 +487,38 @@ entorno conserva precedencia sobre el archivo de usuario:
 ANTONIOWM_TERMINAL='xfce4-terminal' DISPLAY=:1 ./antoniowm
 ```
 
+### Selector visual de Alt+Tab
+
+Mantén `Alt` y pulsa `Tab` para mostrar las ventanas elegibles del escritorio
+actual, con iconos, títulos y selección resaltada. Cada `Tab` avanza y
+`Mayús+Tab` retrocede. El foco cambia en cada pulsación, como antes; al soltar
+la última tecla Alt se oculta el selector y permanece la ventana seleccionada.
+`Escape` cierra el selector manteniendo la selección actual.
+
+Se conserva el orden de gestión y las exclusiones anteriores: las ventanas
+minimizadas no participan y se restauran desde la taskbar. El selector aparece
+en el monitor de la ventana enfocada al comenzar; si no hay una, usa el del
+puntero. Permanece en ese monitor durante el gesto, incluso si la siguiente
+ventana está en otro. Las listas largas desplazan las filas visibles para
+mantener la selección dentro de los límites del monitor.
+
+El popup no recibe foco ni aparece como tarea o cliente. Se retira al cerrar
+un cliente, cambiar de escritorio, cambiar la topología de monitores,
+reconfigurar el teclado o reiniciar el WM. Un clic u otra tecla cancela el
+selector y sigue el tratamiento habitual del atajo correspondiente.
+
+Prueba aislada con XTest, Xephyr y dos monitores lógicos (requiere
+`libxtst-dev` e ImageMagick para generar las capturas):
+
+```sh
+# DISPLAY debe señalar al servidor anfitrión de Xephyr.
+make switcher-smoke
+```
+
+El runner usa :151, comprueba que esté libre y guarda capturas y logs en
+`tests/evidence/switcher/` (excluido de Git). Admite `WM_BINARY`,
+`TEST_SANITIZERS` y `EVIDENCE_DIR` para probar un binario instrumentado.
+
 ## Configuración de usuario
 
 Al arrancar, AntonioWM busca primero la ruta indicada por

@@ -124,6 +124,11 @@ static bool can_receive_focus(const Client *client)
            client_is_focus_candidate(client);
 }
 
+bool client_is_cycle_candidate(const Client *client)
+{
+    return can_receive_focus(client);
+}
+
 static void unmap_iconified_client(Client *client)
 {
     XWindowAttributes attributes;

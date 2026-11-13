@@ -66,6 +66,7 @@ static void handle_enter_notify(const XCrossingEvent *event)
     Client *client;
 
     wm.last_event_time = event->time;
+    if (switcher_blocks_enter(event)) return;
     (void)taskbar_handle_enter(event);
     decor_handle_enter(event);
     if (!wm.config.focus_follows_mouse || event->mode != NotifyNormal ||
@@ -193,6 +194,7 @@ static void refresh_screen_layout(bool refresh_monitors)
     XWindowAttributes attributes;
     Client *client;
 
+    switcher_cancel();
     task_preview_cancel();
     if (XGetWindowAttributes(wm.display, wm.root, &attributes) != 0) {
         wm.screen_width = attributes.width;
@@ -260,6 +262,7 @@ static void handle_map_notify(const XMapEvent *event)
 
 void events_dispatch(XEvent *event)
 {
+    if (switcher_handle_event(event)) return;
     if (monitor_handle_event(event)) {
         refresh_screen_layout(true);
         return;
@@ -338,4 +341,5 @@ void events_dispatch(XEvent *event)
     default:
         break;
     }
+    switcher_refresh();
 }

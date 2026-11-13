@@ -187,3 +187,138 @@ ese plan. Su inclusión como herramientas manuales no significa validación fís
   `examples/config` y este informe. Se excluyen binarios, backups, temporales,
   configuración personal, secretos y logs/capturas locales. No se cambia el
   predeterminado de cuatro escritorios ni se modifica `v0.4.14` o crea otro tag.
+
+## Trabajo local posterior: selector visual de Alt+Tab
+
+Base publicada: `7278216`. El árbol estaba limpio al empezar. La mejora se
+entregó inicialmente sin commit. El usuario autoriza ahora un commit local
+limitado al selector, sus pruebas y documentación: sin instalación, push ni
+cambios de tags.
+
+### Política comprobada antes de modificar
+
+`client_cycle_focus()` sincroniza el foco, recorre `next`/`previous` de la lista
+de clientes (orden de gestión, con wrap) y enfoca inmediatamente el candidato.
+`can_receive_focus()` exige mapped, visible, no minimizada, escritorio actual
+(o sticky) y un tipo/foco ICCCM elegible. Tipos normal, diálogo, utilidad y
+barra de herramientas participan; dock y clientes sin input/WM_TAKE_FOCUS no.
+`skip_taskbar` por sí solo no excluye de Alt+Tab. Las minimizadas se omiten:
+se conserva esa política, sin restaurarlas ni introducir orden MRU.
+
+### Implementación localizada
+
+- `src/switcher.c`: popup override_redirect creado de forma diferida, con
+  InputHint=false y sin foco, marco ni registro como cliente. Muestra iconos
+  de la caché existente, títulos elipsizados y fila seleccionada. Las listas
+  largas desplazan sus filas para mantener la selección visible.
+- La navegación sigue llamando al mismo `client_cycle_focus()`. Un wrapper
+  público del predicado existente permite dibujar exactamente los candidatos
+  que acepta ese recorrido, sin copiar las reglas de elegibilidad.
+- Monitor fijado al comenzar: el de la ventana enfocada, o el del puntero si
+  no hay foco. Geometría centrada y acotada a ese monitor. No salta de pantalla
+  al avanzar hacia un cliente de otro monitor.
+- Grab de teclado sobre root, independiente del foco: conserva KeyRelease
+  después de soltar Tab. Se consulta el mapa físico de teclas del modificador
+  configurado, incluyendo Alt izquierdo/derecho. Solo al soltar la última Alt
+  se oculta y se libera el grab. Escape cancela el popup sin deshacer el foco
+  cambiado por el ciclo existente. Si no se consigue el grab, el ciclo previo
+  sigue funcionando sin popup.
+- No guarda punteros a clientes ni listas de XID persistentes: reconstruye la
+  vista con la lista actual. Cierre/unmap de clientes, cambio de escritorio,
+  RandR, cambio de mapping del teclado y cleanup cancelan la operación. Un
+  reinicio destruye el popup antes de liberar clientes y dibujo.
+- Se inhibe el foco por Enter y la programación de previews por movimiento
+  del puntero mientras el selector está activo. Al ocultarlo se ignora solo el
+  Enter generado por su propio XUnmapWindow (identificado por serial), para
+  que el foco por ratón no deshaga la selección final; otros cruces siguen
+  el tratamiento habitual. La política de stacking lo
+  eleva sobre las ventanas enfocadas, también después de enfocar otra tarea.
+- Integraciones pequeñas en keyboard, events, desktop, stacking y cleanup;
+  Makefile incorpora el módulo y el target `switcher-smoke`.
+
+### Verificación de esta mejora
+
+Ejecutado con el WM real en Xephyr :151, dentro de Xvnc :150. Dos monitores
+lógicos de 640×800 sobre un framebuffer 1280×800. No se utiliza la sesión
+habitual para estas pruebas. El runner usa una copia privada del ejecutable y
+rechaza una pantalla ya ocupada.
+
+- `make check`: pasa con advertencias estrictas y `-Werror`.
+- `tests/run_switcher.sh`: pasa en compilación normal. Xlib/XTest mantiene Alt
+  físicamente pulsado, libera Tab, comprueba que el popup permanezca, avanza,
+  retrocede con Shift y verifica el foco real al soltar Alt. Ambas teclas Alt
+  también se comprueban: soltar una no cierra si la otra continúa pulsada.
+- Comprueba orden, minimizadas excluidas (sin restauración), dock, input=false,
+  otro escritorio y skip_taskbar elegible. Cubre cero/una ventana, Escape,
+  cierre del cliente seleccionado y cambio de escritorio durante el gesto.
+- Comprueba override_redirect, InputHint=false, ausencia en `_NET_CLIENT_LIST`
+  y WM_STATE, foco en el cliente y liberación del grab con un segundo cliente.
+  Icono y resaltado se validan por píxeles. El puntero sobre la taskbar no
+  abre una preview encima del selector. Se ejecuta con
+  `focus_follows_mouse=true`, incluyendo soltar Alt con el puntero encima de
+  otro cliente situado debajo del popup: el foco permanece en el seleccionado.
+- Monitor derecho con puntero en el izquierdo, y después monitor izquierdo:
+  geometrías dentro de límites; lista de 31 clientes con desplazamiento y
+  25 ciclos adicionales. Reinicio con el popup abierto y contador de arranques
+  en el log, sin popup ni grab huérfanos al volver.
+- Suite completa anterior y stress: pasan (fases 1–4, foco/teclado, taskbar,
+  panel/menú, tray, autostart, screenshot, multimonitor/resize y previews).
+- Compilación completa con ASan/UBSan y `-Werror`: pasa. La prueba específica
+  del selector también pasa con ASan/UBSan y LeakSanitizer activo, sin informes
+  de acceso, UB o fugas al salir. Se mantiene separada de las regresiones con
+  `ASAN_OPTIONS=detect_leaks=0`, que no sirven como comprobación de fugas.
+
+Capturas locales inspeccionadas: `right-forward.png`, `right-reverse.png`,
+`left-monitor.png` y `scrolling.png`. Muestran icono, títulos, fila resaltada y
+lista larga acotada. Logs/capturas quedan bajo `tests/evidence/switcher*`,
+excluido de Git. Los tests nuevos son `tests/switcher_test.c` y
+`tests/run_switcher.sh`.
+
+### Hallazgo previo fuera del alcance
+
+El primer intento destruía simultáneamente 30 ventanas durante el teardown y
+registró BadWindow al consultar/enfocar candidatos que ya habían desaparecido.
+Se reprodujo ese caso sin selector en el binario publicado: ocho BadWindow.
+No se presenta como una regresión causada por el popup ni se oculta el intento
+fallido. La suite del selector cierra por separado la lista de carga para
+mantener ese problema previo separado de la comprobación de cierre durante
+selección (que sí se ejecuta y pasa). No se amplía este cambio a un refactor de
+la recuperación de foco ante destrucciones masivas. **El BadWindow preexistente
+sigue pendiente; este commit no lo corrige.**
+
+Limitaciones: monitores lógicos, sin hotplug físico ni instalación de esta
+mejora. En monitores inferiores a 96×72 no se muestra el popup y se conserva
+el cambio de foco; no se crea una geometría inválida. El foco sigue cambiando
+inmediatamente como antes: Escape no revierte al cliente de inicio.
+
+
+Comprobaciones finales y evidencias de esta fase: compilación estricta en
+`tests/evidence/switcher-build-final.log`; prueba normal en
+`switcher-final-result.log` y `switcher-final/`; prueba ASan/UBSan/LSan en
+`switcher-asan-final-result.log` y `switcher-asan-final/`. La suite completa
+normal está en `switcher-regressions.log`; su repetición ASan/UBSan con
+`detect_leaks=0`, en `switcher-regressions-asan-no-lsan.log`. Las interrupciones
+del anfitrión Xvnc y un intento con una opción no admitida por TightVNC no se
+cuentan como pruebas del WM: se repitieron con el anfitrión dentro de la misma
+ejecución de pruebas y una conexión de mantenimiento. No se modificó la
+instalación para resolver esos fallos del entorno.
+
+Resultado final de la repetición instrumentada completa: terminó con estado 0,
+incluyendo la regresión de previews y el stress de 24 clientes. Esa ejecución
+usa `detect_leaks=0`; la prueba específica final del selector mantiene LSan
+activo y termina también con estado 0. Todos los servidores aislados se cierran
+al finalizar los runners. Al terminar esa validación, `git diff --check` pasaba
+y HEAD seguía siendo `7278216`; los tags coincidían con la lista previa. El ejecutable instalado conserva su
+hash anterior; no se instala ni reinicia esta mejora en la sesión habitual.
+
+
+### Revisión previa al commit local del selector
+
+Se revisaron el diff y los archivos nuevos: solo contienen el selector visual,
+sus integraciones de teclado/foco/stacking/limpieza, las pruebas Xlib/XTest y
+la documentación correspondiente. No se modifica la recuperación de foco ante
+cierres masivos ni se incluye ninguna corrección del BadWindow previo. Las
+evidencias locales y ejecutables permanecen excluidos. Se repiten
+`git diff --check` y `make check` con `-Werror` antes de crear el commit local:
+ambas comprobaciones pasan. No se autoriza push, instalación ni creación de
+tags.
